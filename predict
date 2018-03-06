@@ -1,0 +1,45 @@
+#!/bin/bash
+MODEL=image_classifier
+OUTPUT=data/request.json
+
+while [[ $# -gt 1 ]]
+do
+key="$1"
+
+case $key in
+    -m|--model)
+    MODEL="$2"
+    shift # past argument
+    ;;
+    -v|--version)
+    VERSION="$2"
+    shift # past argument
+    ;;
+    -o|--output)
+    OUTPUT="$2"
+    shift # past argument
+    ;;
+    *)
+		break # unknown option
+    ;;
+esac
+shift # past argument or value
+done
+
+FILEPATH="$@"
+
+if [[ -z $FILEPATH ]]; then
+	echo "Usage: ./predict [-v version] image_path1 image_path2 ..."
+	exit 1
+fi
+
+python images_to_json.py -o data/request.json $FILEPATH
+
+if [[ -n $VERSION ]]
+then
+  echo "Version: $VERSION"
+  echo "gcloud ml-engine predict --model $MODEL --version $VERSION --json-instances data/request.json"
+  gcloud ml-engine predict --model $MODEL --version $VERSION --json-instances data/request.json
+else
+  gcloud ml-engine predict --model $MODEL --json-instances data/request.json
+fi
