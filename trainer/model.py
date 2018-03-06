@@ -53,8 +53,9 @@ MAX_TEXT_LENGTH = 256
 TEXT_EMBEDDING_SIZE = WORD_DIM * MAX_TEXT_LENGTH
 FEATURES_COUNT = 3
 BLOCKS_COUNT = 66
-EXTRA_EMBEDDING_SIZE = FEATURES_COUNT + len(PRICE_SECTION) \
-    + len(IMAGE_COUNT_SECTION) + len(RECENT_ARTICLES_COUNT_SECTION)
+EXTRA_EMBEDDING_SIZE = FEATURES_COUNT
+    #+ len(PRICE_SECTION) \
+    #+ len(IMAGE_COUNT_SECTION) + len(RECENT_ARTICLES_COUNT_SECTION)
 
 
 class GraphMod():
@@ -263,9 +264,9 @@ class Model(object):
       text_embeddings = tf.placeholder(tf.float32, shape=[None, TEXT_EMBEDDING_SIZE])
       text_lengths = tf.placeholder(tf.int64, shape=[None, 1])
       category_ids = tf.placeholder(tf.int64, shape=[None, 1])
-      price = tf.placeholder(tf.int64, shape=[None])
-      images_count = tf.placeholder(tf.int64, shape=[None])
-      recent_articles_count = tf.placeholder(tf.int64, shape=[None])
+      price = tf.placeholder(tf.int64, shape=[None, 1])
+      images_count = tf.placeholder(tf.int64, shape=[None, 1])
+      recent_articles_count = tf.placeholder(tf.int64, shape=[None, 1])
       blocks_inline = tf.placeholder(tf.string, shape=[None])
 
       tensors.input_image = inception_input
@@ -314,7 +315,7 @@ class Model(object):
             'recent_articles_count':
                 tf.FixedLenFeature(shape=[1], dtype=tf.int64),
             'blocks_inline':
-                tf.FixedLenFeature(shape=[1], dtype=tf.string),
+                tf.FixedLenFeature(shape=[], dtype=tf.string),
         }
         parsed = tf.parse_example(tensors.examples, features=feature_map)
         labels = tf.squeeze(parsed['label'])
@@ -330,40 +331,46 @@ class Model(object):
         recent_articles_count = parsed['recent_articles_count']
         blocks_inline = parsed['blocks_inline']
 
+    dropout_keep_prob = self.dropout if is_training else None
+
     with tf.variable_scope("category_embeddings", reuse=tf.AUTO_REUSE):
         category_embeddings = tf.get_variable('table', [TOTAL_CATEGORIES_COUNT, 5])
         category_ids = tf.minimum(category_ids - 1, TOTAL_CATEGORIES_COUNT - 1)
         category_ids = tf.reshape(category_ids, [-1])
         category_embeddings = tf.nn.embedding_lookup(category_embeddings, category_ids)
+        if dropout_keep_prob:
+            category_embeddings = tf.nn.dropout(category_embeddings, dropout_keep_prob)
 
     with tf.variable_scope("continuos_features", reuse=tf.AUTO_REUSE):
         blocks = blocks_inline_to_matrix(blocks_inline)
-        continuos_features = tf.concat([price, images_count, recent_articles_count, blocks], 1)
+        continuos_features = tf.concat([price, images_count, recent_articles_count], 1)
         continuos_features = tf.cast(continuos_features, tf.float32)
-        extra_embeddings = layers.fully_connected(continuos_features, 10,
+        continuos_features = tf.concat([continuos_features, blocks], 1)
+        continuos_features = layers.fully_connected(continuos_features, 10,
                 normalizer_fn=tf.contrib.layers.batch_norm,
                 normalizer_params={'is_training': is_training})
+        if dropout_keep_prob:
+            continuos_features = tf.nn.dropout(continuos_features, dropout_keep_prob)
 
     # We assume a default label, so the total number of labels is equal to
     # label_count+1.
     all_labels_count = self.label_count + 1
     with tf.name_scope('final_ops'):
-      dropout_keep_prob = self.dropout if is_training else None
       embeddings = layers.fully_connected(embeddings, BOTTLENECK_TENSOR_SIZE / 8)
-      extra_embeddings = layers.fully_connected(extra_embeddings, int(EXTRA_EMBEDDING_SIZE / 2),
-              normalizer_fn=tf.contrib.layers.batch_norm,
-              normalizer_params={'is_training': is_training})
       if dropout_keep_prob:
           embeddings = tf.nn.dropout(embeddings, dropout_keep_prob)
-          extra_embeddings = tf.nn.dropout(extra_embeddings, dropout_keep_prob)
-          category_embeddings = tf.nn.dropout(category_embeddings, dropout_keep_prob)
 
       text_embeddings = tf.reshape(text_embeddings, [-1, MAX_TEXT_LENGTH, WORD_DIM])
       text_lengths = tf.reshape(text_lengths, [-1])
       layer_sizes = [WORD_DIM, WORD_DIM*2]
-      initial_state = tf.concat([embeddings, extra_embeddings, category_embeddings], 1, name='initial_state')
+      initial_state = tf.concat([embeddings, category_embeddings, continuos_features, extra_embeddings],
+              1, name='initial_state')
       initial_state = layers.fully_connected(initial_state, WORD_DIM * 2)
+      if dropout_keep_prob:
+          initial_state = tf.nn.dropout(initial_state, dropout_keep_prob)
       initial_state = layers.fully_connected(initial_state, WORD_DIM)
+      if dropout_keep_prob:
+          initial_state = tf.nn.dropout(initial_state, dropout_keep_prob)
 
       #text_embeddings = multi_rnn(text_embeddings, layer_sizes, text_lengths,
       #        dropout_keep_prob=dropout_keep_prob, attn_length=0,
@@ -372,12 +379,12 @@ class Model(object):
               text_lengths, initial_state=initial_state, attn_length=0,
               dropout_keep_prob=dropout_keep_prob, is_training=is_training)
 
-      embeddings = tf.concat([embeddings, text_embeddings, extra_embeddings],
-          1, name='article_embeddings')
+      #embeddings = tf.concat([embeddings, text_embeddings, continuos_features, extra_embeddings],
+      #    1, name='article_embeddings')
       softmax, logits = self.add_final_training_ops(
-          embeddings,
+          text_embeddings,
           all_labels_count,
-          hidden_layer_size=BOTTLENECK_TENSOR_SIZE / 8,
+          hidden_layer_size=WORD_DIM*2, #BOTTLENECK_TENSOR_SIZE / 8,
           dropout_keep_prob=dropout_keep_prob)
 
     # Prediction is the index of the label with the highest score. We are
