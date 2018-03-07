@@ -6,9 +6,9 @@ declare -r MODEL_NAME=article_classifier
 
 if [[ $CMD == 'pre' ]]; then
   declare -r JOB_ID="${MODEL_NAME}_$(date +%Y%m%d_%H%M%S)"
-  echo $JOB_ID > data/job_id_cloud
+  echo $JOB_ID > data/job_id
 else
-  declare -r JOB_ID=$(cat data/job_id_cloud)
+  declare -r JOB_ID=$(cat data/job_id)
 fi
 
 declare -r PROJECT=$(gcloud config list project --format "value(core.project)")
@@ -79,7 +79,6 @@ elif [[ $CMD == 'train' ]] || [[ $CMD == 'train_test' ]]; then
 elif [[ $CMD == 'write_predict' ]]; then
   LABEL_COUNT=`wc -l < $DICT_FILE`
   DATA_PATHS="${GCS_PATH}/preproc/train*,${GCS_PATH}/preproc/eval*"
-  OUTPUT_ID=$(cat data/output_id_cloud)
   DATA_COUNT=300
 
   gcloud ml-engine local train \
