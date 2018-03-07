@@ -44,7 +44,7 @@ def make_rnn_cell(rnn_layer_sizes,
     cells = make_rnn_cells(rnn_layer_sizes, dropout_keep_prob, attn_length, base_cell)
     return tf.contrib.rnn.MultiRNNCell(cells)
 
-def _add_conv_layers(inks, lengths, is_training=False, num_conv=[50, 50, 50], conv_len=[5, 5, 3], batch_norm=False, dropout=0.3):
+def _add_conv_layers(inks, is_training=False, num_conv=[50, 50, 50], conv_len=[5, 5, 3], batch_norm=False, dropout=0.3):
     """Adds convolution layers."""
     convolved = inks
     for i in range(len(num_conv)):
@@ -67,12 +67,12 @@ def _add_conv_layers(inks, lengths, is_training=False, num_conv=[50, 50, 50], co
           strides=1,
           padding="same",
           name="conv1d_%d" % i)
-    return convolved, lengths
+    return convolved
 
 def stack_bidirectional_dynamic_rnn(inputs, layer_sizes, sequence_length,
         initial_state=None, attn_length=0, dropout_keep_prob=1.0,
         base_cell=tf.contrib.rnn.BasicLSTMCell, is_training=False):
-    #inputs, sequence_length = _add_conv_layers(inputs, sequence_length, is_training, batch_norm=True)
+    inputs = _add_conv_layers(inputs, is_training=is_training, num_conv=[layer_sizes[0]], conv_len=[5], dropout=dropout_keep_prob)
     cells_fw = make_rnn_cells(layer_sizes, dropout_keep_prob=dropout_keep_prob,
           attn_length=attn_length, base_cell=base_cell)
     cells_bw = make_rnn_cells(layer_sizes, dropout_keep_prob=dropout_keep_prob,
