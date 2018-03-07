@@ -153,10 +153,11 @@ class Evaluator(object):
     with file_io.FileIO(os.path.join(self.output_path, 'confusion_matrix.csv'), 'w') as f:
         from sklearn.metrics import confusion_matrix
         labels = self.model.get_labels()
-        f.write('# 라벨\예측,%s\n' % ','.join(labels))
+        f.write('# 라벨\예측,%s,Recall\n' % ','.join(labels))
         m = confusion_matrix(y_true, y_pred)
         print(m)
 
+        accuracy = 1.0 * sum([row[i] if row[i] else 0 for i, row in enumerate(m)]) / m.sum()
         recalls = [float(row[i]) / sum(row) if sum(row) else 0 for i, row in enumerate(m)]
         precisions = [float(row[i]) / sum(row) if sum(row) else 0 for i, row in enumerate(m.T)]
         print("%10s\trecall\tprecision" % 'label')
@@ -164,7 +165,10 @@ class Evaluator(object):
             print("%10s\t%.2f\t%.2f" % (label, recall, precision))
 
         for i, row in enumerate(m):
-            f.write('%s,%s\n' % (labels[i], ','.join(map(str, row))))
+            f.write('%s,%s,%.2f\n' % (labels[i], ','.join(map(str, row)), recalls[i]))
+
+        for i, _ in enumerate(m):
+            f.write('Precision,%s,%.2f\n' % (','.join(map(str, precisions)), accuracy))
         print(f.name)
 
 
