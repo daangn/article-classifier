@@ -175,9 +175,6 @@ class Evaluator(object):
     report = classification_report(y_true, y_pred, target_names=labels)
     print(report)
 
-    report = classification_report(y_true, y_pred, target_names=labels)
-    print(report)
-
 
 class Trainer(object):
   """Performs model training and optionally evaluation."""
