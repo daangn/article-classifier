@@ -341,16 +341,16 @@ class Model(object):
         if dropout_keep_prob:
             category_embeddings = tf.nn.dropout(category_embeddings, dropout_keep_prob)
 
-    with tf.variable_scope("continuos_features", reuse=tf.AUTO_REUSE):
+    with tf.variable_scope("continuous_features", reuse=tf.AUTO_REUSE):
         blocks = blocks_inline_to_matrix(blocks_inline)
-        continuos_features = tf.concat([price, images_count, recent_articles_count], 1)
-        continuos_features = tf.cast(continuos_features, tf.float32)
-        continuos_features = tf.concat([continuos_features, blocks], 1)
-        continuos_features = layers.fully_connected(continuos_features, 10,
+        continuous_features = tf.concat([price, images_count, recent_articles_count], 1)
+        continuous_features = tf.cast(continuous_features, tf.float32)
+        continuous_features = tf.concat([continuous_features, blocks], 1)
+        continuous_features = layers.fully_connected(continuous_features, 10,
                 normalizer_fn=tf.contrib.layers.batch_norm,
                 normalizer_params={'is_training': is_training})
         if dropout_keep_prob:
-            continuos_features = tf.nn.dropout(continuos_features, dropout_keep_prob)
+            continuous_features = tf.nn.dropout(continuous_features, dropout_keep_prob)
 
     # We assume a default label, so the total number of labels is equal to
     # label_count+1.
@@ -363,7 +363,7 @@ class Model(object):
       text_embeddings = tf.reshape(text_embeddings, [-1, MAX_TEXT_LENGTH, WORD_DIM])
       text_lengths = tf.reshape(text_lengths, [-1])
       layer_sizes = [WORD_DIM, WORD_DIM*2]
-      initial_state = tf.concat([embeddings, category_embeddings, continuos_features, extra_embeddings],
+      initial_state = tf.concat([embeddings, category_embeddings, continuous_features, extra_embeddings],
               1, name='initial_state')
       initial_state = layers.fully_connected(initial_state, WORD_DIM * 2)
       if dropout_keep_prob:
@@ -379,7 +379,7 @@ class Model(object):
               text_lengths, initial_state=initial_state, attn_length=0,
               dropout_keep_prob=dropout_keep_prob, is_training=is_training)
 
-      #embeddings = tf.concat([embeddings, text_embeddings, continuos_features, extra_embeddings],
+      #embeddings = tf.concat([embeddings, text_embeddings, continuous_features, extra_embeddings],
       #    1, name='article_embeddings')
       softmax, logits = self.add_final_training_ops(
           text_embeddings,
