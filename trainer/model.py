@@ -39,8 +39,6 @@ LABEL_COLUMN = 'label'
 EMBEDDING_COLUMN = 'embedding'
 
 TOTAL_CATEGORIES_COUNT = 62
-MAX_PRICE = 100000000.0
-MAX_IMAGES_COUNT = 14.0
 DAY_TIME = 60.0 * 60 * 24
 
 IMAGE_COUNT_SECTION = [1, 2, 5, 10]
@@ -146,23 +144,12 @@ def get_extra_embeddings(tensors):
     created_at_ts = tensors.input_created_at_ts
     offerable = tensors.input_offerable
 
-    #price_section = tf.one_hot(find_nearest_idx(price_section, price), len(PRICE_SECTION))
-    #images_count_section = tf.one_hot(find_nearest_idx(images_count_section, images_count), len(IMAGE_COUNT_SECTION))
-    #recent_articles_count_section = tf.one_hot(find_nearest_idx(
-    #    recent_articles_count_section, recent_articles_count), len(RECENT_ARTICLES_COUNT_SECTION))
-
-    #price_norm = tf.minimum(price / MAX_PRICE, 1.0)
-    #is_free = tf.cast(tf.equal(price, 0), tf.float32)
-    #images_count_norm = tf.minimum(images_count / MAX_IMAGES_COUNT, 1.0)
     created_hour = created_at_ts % DAY_TIME * 1.0 / DAY_TIME
     created_hour = tf.cast(created_hour, tf.float32)
     day = tf.cast(created_at_ts / DAY_TIME % 7 / 7.0, tf.float32)
 
-    #extra_embeddings = tf.concat([price_norm, is_free, images_count_norm, offerable, created_hour, day], 0)
     extra_embeddings = tf.concat([offerable, created_hour, day], 0)
     extra_embeddings = tf.reshape(extra_embeddings, [-1, FEATURES_COUNT])
-    #extra_embeddings = tf.concat([extra_embeddings, price_section, images_count_section,
-    #    recent_articles_count_section, blocks], 1)
     return extra_embeddings
 
 def blocks_inline_to_matrix(inline):
