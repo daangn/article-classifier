@@ -69,11 +69,6 @@ elif [[ $CMD == 'pre' ]]; then
     --num_workers 1 \
     --cloud
 
-#    --autoscaling_algorithm=NONE \
-#    --num_workers 1 \
-#    --max_num_workers 1 \
-# 	 --staging_location "${GCS_PATH}/staging" \
-
 elif [[ $CMD == 'down_pre' ]]; then
   mkdir -p "jobs/${JOB_ID}/preproc"
   rm -f "jobs/${JOB_ID}/preproc/eval*"
