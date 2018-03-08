@@ -339,9 +339,6 @@ class Model(object):
         if dropout_keep_prob:
             continuous_features = tf.nn.dropout(continuous_features, dropout_keep_prob)
 
-    # We assume a default label, so the total number of labels is equal to
-    # label_count+1.
-    all_labels_count = self.label_count + 1
     with tf.name_scope('final_ops'):
       embeddings = layers.fully_connected(embeddings, BOTTLENECK_TENSOR_SIZE / 8)
       if dropout_keep_prob:
@@ -369,7 +366,7 @@ class Model(object):
       #    1, name='article_embeddings')
       softmax, logits = self.add_final_training_ops(
           text_embeddings,
-          all_labels_count,
+          self.label_count,
           hidden_layer_size=WORD_DIM*2, #BOTTLENECK_TENSOR_SIZE / 8,
           dropout_keep_prob=dropout_keep_prob)
 
