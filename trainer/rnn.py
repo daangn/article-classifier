@@ -2,6 +2,7 @@ import tensorflow as tf
 from tensorflow.python.ops import rnn_cell
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import rnn
 from tensorflow.contrib.rnn.python.ops import lstm_ops
 from tensorflow.contrib.rnn.python.ops import rnn as contrib_rnn
@@ -71,14 +72,14 @@ def _add_conv_layers(inks, is_training=False, num_conv=[50, 50, 50], conv_len=[5
 
 def stack_bidirectional_dynamic_rnn(inputs, layer_sizes, sequence_length,
         initial_state=None, attn_length=0, dropout_keep_prob=1.0,
-        base_cell=tf.contrib.rnn.BasicLSTMCell, is_training=False):
-    inputs = _add_conv_layers(inputs, is_training=is_training, num_conv=[layer_sizes[0]], conv_len=[5], dropout=dropout_keep_prob)
+        base_cell=tf.contrib.rnn.BasicLSTMCell, is_training=False, attention=False):
+    #inputs = _add_conv_layers(inputs, is_training=is_training, num_conv=[layer_sizes[0]], conv_len=[5], dropout=dropout_keep_prob)
     cells_fw = make_rnn_cells(layer_sizes, dropout_keep_prob=dropout_keep_prob,
           attn_length=attn_length, base_cell=base_cell)
     cells_bw = make_rnn_cells(layer_sizes, dropout_keep_prob=dropout_keep_prob,
           attn_length=attn_length, base_cell=base_cell)
 
-    if initial_state is not None:
+    if initial_state is not None and not attention:
         batch_size = tf.shape(inputs)[0]
         size = layer_sizes[0]
         initial_states_fw = [tf.contrib.rnn.LSTMStateTuple(tf.zeros([batch_size, size]), initial_state)]
@@ -94,22 +95,39 @@ def stack_bidirectional_dynamic_rnn(inputs, layer_sizes, sequence_length,
       initial_states_bw=initial_states_bw,
       dtype=tf.float32)
 
-    output_state_fw = output_state_fw[-1]
-    output_state_bw = output_state_bw[-1]
-    return tf.concat([output_state_fw.h, output_state_bw.h], 1) # eval: 81, 500
+    if not attention:
+        output_state_fw = output_state_fw[-1]
+        output_state_bw = output_state_bw[-1]
+        return tf.concat([output_state_fw.h, output_state_bw.h], 1) # eval: 81, 500
 
-    mask = tf.tile(
-        tf.expand_dims(tf.sequence_mask(sequence_length, tf.shape(outputs)[1]), 2),
-        [1, 1, tf.shape(outputs)[2]])
-    zero_outside = tf.where(mask, outputs, tf.zeros_like(outputs))
+    with tf.name_scope('mechanism'):
+        query = tf.contrib.layers.fully_connected(initial_state, 50)
+        attention_mechanism = tf.contrib.seq2seq.LuongAttention(50, outputs, sequence_length)
+        alignments = attention_mechanism(query, None)
+        expanded_alignments = array_ops.expand_dims(alignments, 1)
+        context = math_ops.matmul(expanded_alignments, attention_mechanism.values)
+        context = array_ops.squeeze(context, [1])
+    return tf.concat([context, initial_state], 1)
+
+    # error on distributed training
+    with tf.name_scope('attention'):
+        state = math_ops.matmul(tf.ones([tf.shape(initial_state)[0], 256, 1]), tf.expand_dims(initial_state, 1))
+        #state = tf.reshape(tf.tile(initial_state, [1, 256]), [-1, 256, 50])
+        alpha1 = tf.concat([outputs, state], -1)
+        alpha1 = tf.reshape(alpha1, [-1, 256*250])
+        alpha2 = tf.contrib.layers.fully_connected(alpha1, 256, activation_fn=None)
+        alpha = tf.nn.softmax(alpha2, name='attention_softmax')
+        alpha = tf.expand_dims(alpha, -1)
+        context = tf.reduce_sum(outputs * alpha, axis=1)
+    return tf.concat([context, initial_state], 1)
+
+    #mask = tf.tile(
+    #    tf.expand_dims(tf.sequence_mask(sequence_length, tf.shape(outputs)[1]), 2),
+    #    [1, 1, tf.shape(outputs)[2]])
+    #zero_outside = tf.where(mask, outputs, tf.zeros_like(outputs))
+
     outputs = tf.reduce_sum(zero_outside, axis=1)
     return outputs
-    #last_outputs = tf.concat([output_state_fw[-1].c, output_state_fw[-1].h, output_state_fw[-1].c, output_state_bw[-1].h], 1) # eval: 83, 1200
-    #last_outputs = outputs[:, 0] # eval: 83, 1000
-
-    #range1 = tf.range(sequence_length.shape[0], dtype=tf.int64)
-    #nd = tf.stack([range1, sequence_length - 1], 1)
-    #last_outputs = tf.gather_nd(outputs, nd) # eval: 76, 600
 
 def simple_rnn(inputs, num_units, sequence_length, dropout_keep_prob=1.0, attn_length=0):
     #cell = rnn_cell.LSTMCell(num_units, state_is_tuple=True)

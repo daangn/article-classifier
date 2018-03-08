@@ -249,7 +249,7 @@ class Model(object):
       embeddings = inception_embeddings
 
       text_embeddings = tf.placeholder(tf.float32, shape=[None, TEXT_EMBEDDING_SIZE])
-      text_lengths = tf.placeholder(tf.int64, shape=[None, 1])
+      text_lengths = tf.placeholder(tf.int64, shape=[None])
       category_ids = tf.placeholder(tf.int64, shape=[None, 1])
       price = tf.placeholder(tf.int64, shape=[None, 1])
       images_count = tf.placeholder(tf.int64, shape=[None, 1])
@@ -289,7 +289,7 @@ class Model(object):
                 tf.FixedLenFeature(
                     shape=[TEXT_EMBEDDING_SIZE], dtype=tf.float32),
             'text_length':
-                tf.FixedLenFeature(shape=[1], dtype=tf.int64),
+                tf.FixedLenFeature(shape=[], dtype=tf.int64),
             'extra_embedding':
                 tf.FixedLenFeature(
                     shape=[EXTRA_EMBEDDING_SIZE], dtype=tf.float32),
@@ -348,7 +348,6 @@ class Model(object):
           embeddings = tf.nn.dropout(embeddings, dropout_keep_prob)
 
       text_embeddings = tf.reshape(text_embeddings, [-1, MAX_TEXT_LENGTH, WORD_DIM])
-      text_lengths = tf.reshape(text_lengths, [-1])
       layer_sizes = [WORD_DIM, WORD_DIM*2]
       initial_state = tf.concat([embeddings, category_embeddings, continuous_features, extra_embeddings],
               1, name='initial_state')
