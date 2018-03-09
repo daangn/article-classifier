@@ -438,7 +438,6 @@ class Model(object):
     if not is_training:
       tf.summary.scalar('accuracy', accuracy_op)
       tf.summary.scalar('loss', loss_op)
-      tf.summary.histogram('histogram_loss', loss_op)
       for i in range(self.label_count):
           label_name = self.labels[i]
           tf.summary.scalar('recall_%s' % label_name, recalls[i]['op'])

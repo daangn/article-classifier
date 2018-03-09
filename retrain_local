@@ -70,6 +70,7 @@ elif [[ $CMD == 'train' ]] || [[ $CMD == 'train_test' ]]; then
     -- \
     --label_count $LABEL_COUNT \
     --max_steps 10 \
+    --eval_set_size 1000 \
     --output_path "${GCS_PATH}/training" \
     --eval_data_paths "${GCS_PATH}/preproc/eval*" \
     --train_data_paths "${TRAIN_PATHS}" \

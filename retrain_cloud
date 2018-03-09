@@ -104,14 +104,15 @@ elif [[ $CMD == 'train' ]] || [[ $CMD == 'train_test' ]]; then
     --config config.yaml \
     -- \
     --label_count $LABEL_COUNT \
-    --max_steps 20000 \
+    --max_steps 18000 \
+    --eval_set_size 1000 \
     --output_path "${GCS_PATH}/training_${OUTPUT_ID}" \
     --eval_data_paths "${GCS_PATH}/preproc/eval*" \
     --train_data_paths "${TRAIN_PATHS}" \
     --input_dict "$DICT_FILE" \
     --attention 'no_use' \
-    --rnn_layers_count 2 \
-    --final_layers_count 3 \
+    --rnn_layers_count 1 \
+    --final_layers_count 4 \
     --dropout 0.5
 
 elif [[ $CMD == 'write_predict' ]]; then
@@ -134,6 +135,9 @@ elif [[ $CMD == 'write_predict' ]]; then
     --output_path "${GCS_PATH}/training_${OUTPUT_ID}" \
     --eval_data_paths $DATA_PATHS \
     --eval_set_size $DATA_COUNT \
+    --attention 'no_use' \
+    --rnn_layers_count 1 \
+    --final_layers_count 4 \
     --input_dict "$DICT_FILE"
 
   echo "${GCS_PATH}/training_${OUTPUT_ID}"
