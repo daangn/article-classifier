@@ -145,7 +145,7 @@ class Evaluator(object):
                       self.model.id_to_key(prediction), round(score[prediction], 2),
                       round(score[label] - score[prediction], 2)])
 
-        f.write('# article_id,label,label_score,predict,predict_score,bad_score\n')
+        f.write('article_id,label,label_score,predict,predict_score,bad_score\n')
         for item in sorted(results, key=lambda x: x[-1]):
             f.write('%s\n' % ','.join(map(str, item)))
         print(f.name)
