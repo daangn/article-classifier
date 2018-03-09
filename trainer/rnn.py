@@ -72,14 +72,14 @@ def _add_conv_layers(inks, is_training=False, num_conv=[50, 50, 50], conv_len=[5
 
 def stack_bidirectional_dynamic_rnn(inputs, layer_sizes, sequence_length,
         initial_state=None, attn_length=0, dropout_keep_prob=1.0,
-        base_cell=tf.contrib.rnn.BasicLSTMCell, is_training=False, attention=False):
+        base_cell=tf.contrib.rnn.BasicLSTMCell, is_training=False):
     #inputs = _add_conv_layers(inputs, is_training=is_training, num_conv=[layer_sizes[0]], conv_len=[5], dropout=dropout_keep_prob)
     cells_fw = make_rnn_cells(layer_sizes, dropout_keep_prob=dropout_keep_prob,
           attn_length=attn_length, base_cell=base_cell)
     cells_bw = make_rnn_cells(layer_sizes, dropout_keep_prob=dropout_keep_prob,
           attn_length=attn_length, base_cell=base_cell)
 
-    if initial_state is not None and not attention:
+    if initial_state is not None:
         batch_size = tf.shape(inputs)[0]
         size = layer_sizes[0]
         initial_states_fw = [tf.contrib.rnn.LSTMStateTuple(tf.zeros([batch_size, size]), initial_state)]
@@ -95,19 +95,9 @@ def stack_bidirectional_dynamic_rnn(inputs, layer_sizes, sequence_length,
       initial_states_bw=initial_states_bw,
       dtype=tf.float32)
 
-    if not attention:
-        output_state_fw = output_state_fw[-1]
-        output_state_bw = output_state_bw[-1]
-        return tf.concat([output_state_fw.h, output_state_bw.h], 1) # eval: 81, 500
-
-    with tf.name_scope('mechanism'):
-        query = tf.contrib.layers.fully_connected(initial_state, 50)
-        attention_mechanism = tf.contrib.seq2seq.LuongAttention(50, outputs, sequence_length)
-        alignments = attention_mechanism(query, None)
-        expanded_alignments = array_ops.expand_dims(alignments, 1)
-        context = math_ops.matmul(expanded_alignments, attention_mechanism.values)
-        context = array_ops.squeeze(context, [1])
-    return tf.concat([context, initial_state], 1)
+    output_state_fw = output_state_fw[-1]
+    output_state_bw = output_state_bw[-1]
+    return outputs, tf.concat([output_state_fw.h, output_state_bw.h], 1) # eval: 81, 500
 
     # error on distributed training
     with tf.name_scope('attention'):

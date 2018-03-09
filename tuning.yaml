@@ -1,0 +1,29 @@
+trainingInput:
+  scaleTier: CUSTOM
+  masterType: complex_model_m
+  workerType: complex_model_m
+  parameterServerType: large_model
+  workerCount: 9
+  parameterServerCount: 3
+  hyperparameters:
+    goal: MAXIMIZE
+    maxTrials: 30
+    maxParallelTrials: 1
+    enableTrialEarlyStopping: True
+    params:
+    - parameterName: attention
+      type: CATEGORICAL
+      categoricalValues:
+      - use
+      - no_use
+    - parameterName: rnn_layers_count
+      type: INTEGER
+      minValue: 1
+      maxValue: 4
+      scaleType: UNIT_LINEAR_SCALE
+    - parameterName: final_layers_count
+      type: INTEGER
+      minValue: 1
+      maxValue: 5
+      scaleType: UNIT_LINEAR_SCALE
+

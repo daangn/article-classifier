@@ -26,6 +26,8 @@ from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.saved_model import utils as saved_model_utils
 from tensorflow.python.lib.io import file_io
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 
 import util
 from util import override_if_not_in_args
@@ -91,9 +93,13 @@ def create_model():
   parser = argparse.ArgumentParser()
   # Label count needs to correspond to nubmer of labels in dictionary used
   # during preprocessing.
-  parser.add_argument('--label_count', type=int, default=5)
+  parser.add_argument('--label_count', type=int)
   parser.add_argument('--dropout', type=float, default=0.5)
   parser.add_argument('--input_dict', type=str)
+  parser.add_argument('--attention', type=str, default='use')
+  parser.add_argument('--rnn_type', type=str, default='LSTM')
+  parser.add_argument('--rnn_layers_count', type=int, default=3)
+  parser.add_argument('--final_layers_count', type=int, default=3)
   args, task_args = parser.parse_known_args()
   override_if_not_in_args('--max_steps', '1000', task_args)
   override_if_not_in_args('--batch_size', '100', task_args)
@@ -101,7 +107,10 @@ def create_model():
   override_if_not_in_args('--eval_interval_secs', '2', task_args)
   override_if_not_in_args('--log_interval_secs', '2', task_args)
   override_if_not_in_args('--min_train_eval_rate', '2', task_args)
-  return Model(args.label_count, args.dropout, args.input_dict), task_args
+  return Model(args.label_count, args.dropout, args.input_dict,
+          use_attention=args.attention=='use', rnn_type=args.rnn_type,
+          rnn_layers_count=args.rnn_layers_count,
+          final_layers_count=args.final_layers_count), task_args
 
 
 class GraphReferences(object):
@@ -171,10 +180,15 @@ def blocks_inline_to_matrix(inline):
 class Model(object):
   """TensorFlow model for the flowers problem."""
 
-  def __init__(self, label_count, dropout, labels_path):
+  def __init__(self, label_count, dropout, labels_path, use_attention=False,
+          rnn_type='LSTM', rnn_layers_count=2, final_layers_count=2):
     self.label_count = label_count
     self.dropout = dropout
     self.labels = file_io.read_file_to_string(labels_path).strip().split('\n')
+    self.use_attention = use_attention
+    self.rnn_type = rnn_type
+    self.rnn_layers_count = rnn_layers_count
+    self.final_layers_count = final_layers_count
 
   def get_labels(self):
       return self.labels
@@ -183,7 +197,7 @@ class Model(object):
       return self.labels[id]
 
   def add_final_training_ops(self,
-                             embeddings,
+                             hidden,
                              all_labels_count,
                              hidden_layer_size=BOTTLENECK_TENSOR_SIZE / 4,
                              dropout_keep_prob=None):
@@ -206,13 +220,10 @@ class Model(object):
     """
     with tf.name_scope('input'):
       with tf.name_scope('Wx_plus_b'):
-        hidden = layers.fully_connected(embeddings, hidden_layer_size)
-        # We need a dropout when the size of the dataset is rather small.
-        if dropout_keep_prob:
-          hidden = tf.nn.dropout(hidden, dropout_keep_prob)
-        hidden = layers.fully_connected(hidden, hidden_layer_size)
-        if dropout_keep_prob:
-          hidden = tf.nn.dropout(hidden, dropout_keep_prob)
+        for _ in range(self.final_layers_count):
+            hidden = layers.fully_connected(hidden, hidden_layer_size)
+            if dropout_keep_prob:
+                hidden = tf.nn.dropout(hidden, dropout_keep_prob)
         logits = layers.fully_connected(
             hidden, all_labels_count, activation_fn=None)
 
@@ -246,7 +257,7 @@ class Model(object):
 
     if graph_mod == GraphMod.PREDICT:
       inception_input, inception_embeddings = self.build_inception_graph()
-      embeddings = inception_embeddings
+      image_embeddings = inception_embeddings
 
       text_embeddings = tf.placeholder(tf.float32, shape=[None, TEXT_EMBEDDING_SIZE])
       text_lengths = tf.placeholder(tf.int64, shape=[None])
@@ -308,7 +319,7 @@ class Model(object):
         labels = tf.squeeze(parsed['label'])
         tensors.labels = labels
         tensors.ids = tf.squeeze(parsed['id'])
-        embeddings = parsed['embedding']
+        image_embeddings = parsed['embedding']
         text_embeddings = parsed['text_embedding']
         text_lengths = parsed['text_length']
         extra_embeddings = parsed['extra_embedding']
@@ -340,32 +351,55 @@ class Model(object):
             continuous_features = tf.nn.dropout(continuous_features, dropout_keep_prob)
 
     with tf.name_scope('final_ops'):
-      embeddings = layers.fully_connected(embeddings, BOTTLENECK_TENSOR_SIZE / 8)
+      image_embeddings = layers.fully_connected(image_embeddings, BOTTLENECK_TENSOR_SIZE / 8)
       if dropout_keep_prob:
-          embeddings = tf.nn.dropout(embeddings, dropout_keep_prob)
+          image_embeddings = tf.nn.dropout(image_embeddings, dropout_keep_prob)
 
       text_embeddings = tf.reshape(text_embeddings, [-1, MAX_TEXT_LENGTH, WORD_DIM])
-      layer_sizes = [WORD_DIM, WORD_DIM*2]
-      initial_state = tf.concat([embeddings, category_embeddings, continuous_features, extra_embeddings],
-              1, name='initial_state')
-      initial_state = layers.fully_connected(initial_state, WORD_DIM * 2)
-      if dropout_keep_prob:
-          initial_state = tf.nn.dropout(initial_state, dropout_keep_prob)
-      initial_state = layers.fully_connected(initial_state, WORD_DIM)
-      if dropout_keep_prob:
-          initial_state = tf.nn.dropout(initial_state, dropout_keep_prob)
 
-      #text_embeddings = multi_rnn(text_embeddings, layer_sizes, text_lengths,
-      #        dropout_keep_prob=dropout_keep_prob, attn_length=0,
-      #        initial_state=initial_state, base_cell=tf.contrib.rnn.BasicLSTMCell)
-      text_embeddings = stack_bidirectional_dynamic_rnn(text_embeddings, layer_sizes,
-              text_lengths, initial_state=initial_state, attn_length=0,
+      bunch = tf.concat([image_embeddings, category_embeddings, continuous_features, extra_embeddings],
+              1, name='concat_without_text')
+      bunch = layers.fully_connected(bunch, BOTTLENECK_TENSOR_SIZE / 2)
+      if dropout_keep_prob:
+          bunch = tf.nn.dropout(bunch, dropout_keep_prob)
+      bunch = layers.fully_connected(bunch, BOTTLENECK_TENSOR_SIZE / 4)
+      if dropout_keep_prob:
+          bunch = tf.nn.dropout(bunch, dropout_keep_prob)
+
+      if not self.use_attention:
+          initial_state = layers.fully_connected(bunch, WORD_DIM * 2)
+          if dropout_keep_prob:
+              initial_state = tf.nn.dropout(initial_state, dropout_keep_prob)
+          initial_state = layers.fully_connected(initial_state, WORD_DIM)
+          if dropout_keep_prob:
+              initial_state = tf.nn.dropout(initial_state, dropout_keep_prob)
+      else:
+          initial_state = None
+
+      layer_sizes = [WORD_DIM * (2**i) for i in range(self.rnn_layers_count)]
+      text_outputs, text_states = stack_bidirectional_dynamic_rnn(text_embeddings, layer_sizes,
+              text_lengths, initial_state=initial_state,
               dropout_keep_prob=dropout_keep_prob, is_training=is_training)
 
-      #embeddings = tf.concat([embeddings, text_embeddings, continuous_features, extra_embeddings],
-      #    1, name='article_embeddings')
+      if self.use_attention:
+          with tf.name_scope('mechanism'):
+              query = tf.contrib.layers.fully_connected(bunch, WORD_DIM * 2)
+              if dropout_keep_prob:
+                  query = tf.nn.dropout(query, dropout_keep_prob)
+              query = tf.contrib.layers.fully_connected(query, WORD_DIM)
+              if dropout_keep_prob:
+                  query = tf.nn.dropout(query, dropout_keep_prob)
+              attention_mechanism = tf.contrib.seq2seq.LuongAttention(WORD_DIM, text_outputs, text_lengths)
+              alignments = attention_mechanism(query, None)
+              expanded_alignments = array_ops.expand_dims(alignments, 1)
+              context = math_ops.matmul(expanded_alignments, attention_mechanism.values)
+              context = array_ops.squeeze(context, [1])
+          hidden = tf.concat([bunch, context], 1)
+      else:
+          hidden = tf.concat([bunch, text_states], 1)
+
       softmax, logits = self.add_final_training_ops(
-          text_embeddings,
+          hidden,
           self.label_count,
           hidden_layer_size=WORD_DIM*2, #BOTTLENECK_TENSOR_SIZE / 8,
           dropout_keep_prob=dropout_keep_prob)
