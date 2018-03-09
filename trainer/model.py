@@ -261,10 +261,10 @@ class Model(object):
 
       text_embeddings = tf.placeholder(tf.float32, shape=[None, TEXT_EMBEDDING_SIZE])
       text_lengths = tf.placeholder(tf.int64, shape=[None])
-      category_ids = tf.placeholder(tf.int64, shape=[None, 1])
-      price = tf.placeholder(tf.int64, shape=[None, 1])
-      images_count = tf.placeholder(tf.int64, shape=[None, 1])
-      recent_articles_count = tf.placeholder(tf.int64, shape=[None, 1])
+      category_ids = tf.placeholder(tf.int64, shape=[None])
+      price = tf.placeholder(tf.int64, shape=[None])
+      images_count = tf.placeholder(tf.int64, shape=[None])
+      recent_articles_count = tf.placeholder(tf.int64, shape=[None])
       blocks_inline = tf.placeholder(tf.string, shape=[None])
 
       tensors.input_image = inception_input
@@ -277,6 +277,11 @@ class Model(object):
       tensors.input_blocks_inline = blocks_inline
 
       extra_embeddings = get_extra_embeddings(tensors)
+
+      category_ids = tf.reshape(category_ids, [-1, 1])
+      price = tf.reshape(price, [-1, 1])
+      images_count = tf.reshape(images_count, [-1, 1])
+      recent_articles_count = tf.reshape(recent_articles_count, [-1, 1])
     else:
       # For training and evaluation we assume data is preprocessed, so the
       # inputs are tf-examples.
