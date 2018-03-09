@@ -96,10 +96,10 @@ def create_model():
   parser.add_argument('--label_count', type=int)
   parser.add_argument('--dropout', type=float, default=0.5)
   parser.add_argument('--input_dict', type=str)
-  parser.add_argument('--attention', type=str, default='use')
+  parser.add_argument('--attention', type=str, default='no_use')
   parser.add_argument('--rnn_type', type=str, default='LSTM')
-  parser.add_argument('--rnn_layers_count', type=int, default=3)
-  parser.add_argument('--final_layers_count', type=int, default=3)
+  parser.add_argument('--rnn_layers_count', type=int, default=2)
+  parser.add_argument('--final_layers_count', type=int, default=2)
   args, task_args = parser.parse_known_args()
   override_if_not_in_args('--max_steps', '1000', task_args)
   override_if_not_in_args('--batch_size', '100', task_args)
@@ -331,7 +331,7 @@ class Model(object):
 
     dropout_keep_prob = self.dropout if is_training else None
 
-    with tf.variable_scope("category_embeddings", reuse=tf.AUTO_REUSE):
+    with tf.name_scope("category_embeddings"):
         category_embeddings = tf.get_variable('table', [TOTAL_CATEGORIES_COUNT, 5])
         category_ids = tf.minimum(category_ids - 1, TOTAL_CATEGORIES_COUNT - 1)
         category_ids = tf.reshape(category_ids, [-1])
@@ -339,7 +339,7 @@ class Model(object):
         if dropout_keep_prob:
             category_embeddings = tf.nn.dropout(category_embeddings, dropout_keep_prob)
 
-    with tf.variable_scope("continuous_features", reuse=tf.AUTO_REUSE):
+    with tf.name_scope("continuous_features"):
         blocks = blocks_inline_to_matrix(blocks_inline)
         continuous_features = tf.concat([price, images_count, recent_articles_count], 1)
         continuous_features = tf.cast(continuous_features, tf.float32)
@@ -350,34 +350,35 @@ class Model(object):
         if dropout_keep_prob:
             continuous_features = tf.nn.dropout(continuous_features, dropout_keep_prob)
 
-    with tf.name_scope('final_ops'):
+    with tf.name_scope("image_embeddings"):
+      image_embeddings = layers.fully_connected(image_embeddings, BOTTLENECK_TENSOR_SIZE / 4)
+      if dropout_keep_prob:
+          image_embeddings = tf.nn.dropout(image_embeddings, dropout_keep_prob)
       image_embeddings = layers.fully_connected(image_embeddings, BOTTLENECK_TENSOR_SIZE / 8)
       if dropout_keep_prob:
           image_embeddings = tf.nn.dropout(image_embeddings, dropout_keep_prob)
 
-      text_embeddings = tf.reshape(text_embeddings, [-1, MAX_TEXT_LENGTH, WORD_DIM])
-
+    with tf.name_scope('bunch'):
       bunch = tf.concat([image_embeddings, category_embeddings, continuous_features, extra_embeddings],
               1, name='concat_without_text')
-      bunch = layers.fully_connected(bunch, BOTTLENECK_TENSOR_SIZE / 2)
-      if dropout_keep_prob:
-          bunch = tf.nn.dropout(bunch, dropout_keep_prob)
-      bunch = layers.fully_connected(bunch, BOTTLENECK_TENSOR_SIZE / 4)
+      bunch = layers.fully_connected(bunch, BOTTLENECK_TENSOR_SIZE / 8)
       if dropout_keep_prob:
           bunch = tf.nn.dropout(bunch, dropout_keep_prob)
 
-      if not self.use_attention:
+    with tf.name_scope('text'):
+      if self.use_attention:
+          initial_state = None
+      else:
           initial_state = layers.fully_connected(bunch, WORD_DIM * 2)
           if dropout_keep_prob:
               initial_state = tf.nn.dropout(initial_state, dropout_keep_prob)
           initial_state = layers.fully_connected(initial_state, WORD_DIM)
           if dropout_keep_prob:
               initial_state = tf.nn.dropout(initial_state, dropout_keep_prob)
-      else:
-          initial_state = None
 
       layer_sizes = [WORD_DIM * (2**i) for i in range(self.rnn_layers_count)]
-      text_outputs, text_states = stack_bidirectional_dynamic_rnn(text_embeddings, layer_sizes,
+      text_embeddings = tf.reshape(text_embeddings, [-1, MAX_TEXT_LENGTH, WORD_DIM])
+      text_outputs, text_last_states = stack_bidirectional_dynamic_rnn(text_embeddings, layer_sizes,
               text_lengths, initial_state=initial_state,
               dropout_keep_prob=dropout_keep_prob, is_training=is_training)
 
@@ -396,8 +397,9 @@ class Model(object):
               context = array_ops.squeeze(context, [1])
           hidden = tf.concat([bunch, context], 1)
       else:
-          hidden = tf.concat([bunch, text_states], 1)
+          hidden = tf.concat([bunch, text_last_states], 1)
 
+    with tf.name_scope('final_ops'):
       softmax, logits = self.add_final_training_ops(
           hidden,
           self.label_count,
