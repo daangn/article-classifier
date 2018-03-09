@@ -397,7 +397,8 @@ class Model(object):
               context = array_ops.squeeze(context, [1])
           hidden = tf.concat([bunch, context], 1)
       else:
-          hidden = tf.concat([bunch, text_last_states], 1)
+          hidden = text_last_states
+          #hidden = tf.concat([bunch, text_last_states], 1)
 
     with tf.name_scope('final_ops'):
       softmax, logits = self.add_final_training_ops(
@@ -414,8 +415,16 @@ class Model(object):
     if graph_mod == GraphMod.PREDICT:
       return tensors
 
+    def is_l2_var_name(name):
+        for token in ['bias', 'table', 'BatchNorm']:
+            if token in name:
+                return False
+        return True
+
     with tf.name_scope('evaluate'):
       loss_value = loss(logits, labels)
+      #l2_loss = tf.add_n([ tf.nn.l2_loss(v) for v in tf.trainable_variables() if is_l2_var_name(v.name) ])
+      #loss_value += l2_loss * 0.001
 
     # Add to the Graph the Ops that calculate and apply gradients.
     if is_training:

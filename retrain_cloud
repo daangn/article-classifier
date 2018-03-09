@@ -111,8 +111,8 @@ elif [[ $CMD == 'train' ]] || [[ $CMD == 'train_test' ]]; then
     --train_data_paths "${TRAIN_PATHS}" \
     --input_dict "$DICT_FILE" \
     --attention 'no_use' \
-    --rnn_layers_count 1 \
-    --final_layers_count 4 \
+    --rnn_layers_count 2 \
+    --final_layers_count 2 \
     --dropout 0.5
 
 elif [[ $CMD == 'write_predict' ]]; then
@@ -136,8 +136,8 @@ elif [[ $CMD == 'write_predict' ]]; then
     --eval_data_paths $DATA_PATHS \
     --eval_set_size $DATA_COUNT \
     --attention 'no_use' \
-    --rnn_layers_count 1 \
-    --final_layers_count 4 \
+    --rnn_layers_count 2 \
+    --final_layers_count 2 \
     --input_dict "$DICT_FILE"
 
   echo "${GCS_PATH}/training_${OUTPUT_ID}"

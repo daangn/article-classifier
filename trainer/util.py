@@ -90,16 +90,8 @@ def loss(loss_value):
 def accuracy(logits, labels):
   """Calculates aggregated accuracy."""
   is_correct = tf.nn.in_top_k(logits, labels, 1)
-
-  # all
   correct = tf.reduce_sum(tf.cast(is_correct, tf.int32))
   incorrect = tf.reduce_sum(tf.cast(tf.logical_not(is_correct), tf.int32))
-
-  # one label recall
-  #indices = tf.where(tf.equal(labels, tf.constant(0, dtype=tf.int64)))
-  #is_correct = tf.gather(is_correct, indices)
-  #correct = tf.reduce_sum(tf.cast(is_correct, tf.int32))
-  #incorrect = tf.reduce_sum(tf.cast(tf.logical_not(is_correct), tf.int32))
 
   correct_count = tf.Variable(0, False)
   incorrect_count = tf.Variable(0, False)
