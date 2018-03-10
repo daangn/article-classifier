@@ -82,10 +82,16 @@ def stack_bidirectional_dynamic_rnn(inputs, layer_sizes, sequence_length,
     if initial_state is not None:
         batch_size = tf.shape(inputs)[0]
         size = layer_sizes[0]
-        initial_states_fw = [tf.contrib.rnn.LSTMStateTuple(tf.zeros([batch_size, size]), initial_state)]
-        initial_states_bw = [tf.contrib.rnn.LSTMStateTuple(tf.zeros([batch_size, size]), initial_state)]
-        initial_states_fw += [tf.contrib.rnn.LSTMStateTuple(tf.zeros([batch_size, size]), tf.zeros([batch_size, size])) for size in layer_sizes[1:]]
-        initial_states_bw += [tf.contrib.rnn.LSTMStateTuple(tf.zeros([batch_size, size]), tf.zeros([batch_size, size])) for size in layer_sizes[1:]]
+        if base_cell == tf.contrib.rnn.BasicLSTMCell:
+            initial_states_fw = [tf.contrib.rnn.LSTMStateTuple(tf.zeros([batch_size, size]), initial_state)]
+            initial_states_bw = [tf.contrib.rnn.LSTMStateTuple(tf.zeros([batch_size, size]), initial_state)]
+            initial_states_fw += [tf.contrib.rnn.LSTMStateTuple(tf.zeros([batch_size, size]), tf.zeros([batch_size, size])) for size in layer_sizes[1:]]
+            initial_states_bw += [tf.contrib.rnn.LSTMStateTuple(tf.zeros([batch_size, size]), tf.zeros([batch_size, size])) for size in layer_sizes[1:]]
+        elif base_cell == tf.contrib.rnn.GRUCell:
+            initial_states_fw = [initial_state]
+            initial_states_bw = [initial_state]
+            initial_states_fw += [tf.zeros([batch_size, size]) for size in layer_sizes[1:]]
+            initial_states_bw += [tf.zeros([batch_size, size]) for size in layer_sizes[1:]]
     else:
         initial_states_fw = initial_states_bw = None
 
@@ -97,7 +103,12 @@ def stack_bidirectional_dynamic_rnn(inputs, layer_sizes, sequence_length,
 
     output_state_fw = output_state_fw[-1]
     output_state_bw = output_state_bw[-1]
-    return outputs, tf.concat([output_state_fw.h, output_state_bw.h], 1) # eval: 81, 500
+
+    if base_cell == tf.contrib.rnn.BasicLSTMCell:
+        last_states = tf.concat([output_state_fw.h, output_state_bw.h], 1)
+    elif base_cell == tf.contrib.rnn.GRUCell:
+        last_states = tf.concat([output_state_fw, output_state_bw], 1)
+    return outputs, last_states
 
     # error on distributed training
     with tf.name_scope('attention'):

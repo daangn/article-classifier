@@ -383,8 +383,9 @@ class Model(object):
 
       layer_sizes = [WORD_DIM * (2**i) for i in range(self.rnn_layers_count)]
       text_embeddings = tf.reshape(text_embeddings, [-1, MAX_TEXT_LENGTH, WORD_DIM])
+      base_cell = tf.contrib.rnn.BasicLSTMCell if self.rnn_type == 'LSTM' else tf.contrib.rnn.GRUCell
       text_outputs, text_last_states = stack_bidirectional_dynamic_rnn(text_embeddings, layer_sizes,
-              text_lengths, initial_state=initial_state,
+              text_lengths, initial_state=initial_state, base_cell=base_cell,
               dropout_keep_prob=dropout_keep_prob, is_training=is_training)
 
       if self.use_attention:
