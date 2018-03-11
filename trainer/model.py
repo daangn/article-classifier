@@ -49,10 +49,10 @@ RECENT_ARTICLES_COUNT_SECTION = [0, 1, 5, 20, 60, 100]
 
 BOTTLENECK_TENSOR_SIZE = 1536
 WORD_DIM = 50
-MAX_TEXT_LENGTH = 256
-TEXT_EMBEDDING_SIZE = WORD_DIM * MAX_TEXT_LENGTH
+MAX_WORDS_LENGTH = 384
+TEXT_EMBEDDING_SIZE = WORD_DIM * MAX_WORDS_LENGTH
 FEATURES_COUNT = 3
-BLOCKS_COUNT = 66
+BLOCKS_COUNT = 67
 EXTRA_EMBEDDING_SIZE = FEATURES_COUNT
     #+ len(PRICE_SECTION) \
     #+ len(IMAGE_COUNT_SECTION) + len(RECENT_ARTICLES_COUNT_SECTION)
@@ -132,7 +132,10 @@ class GraphReferences(object):
     self.input_created_at_ts = None
     self.input_offerable = None
     self.input_recent_articles_count = None
+    self.input_title_length = None
+    self.input_content_length = None
     self.input_blocks_inline = None
+    self.input_user_name = None
     self.input_text_length = None
     self.ids = None
     self.labels = None
@@ -265,7 +268,10 @@ class Model(object):
       price = tf.placeholder(tf.int64, shape=[None])
       images_count = tf.placeholder(tf.int64, shape=[None])
       recent_articles_count = tf.placeholder(tf.int64, shape=[None])
+      title_length = tf.placeholder(tf.int64, shape=[None])
+      content_length = tf.placeholder(tf.int64, shape=[None])
       blocks_inline = tf.placeholder(tf.string, shape=[None])
+      user_name = tf.placeholder(tf.string, shape=[None])
 
       tensors.input_image = inception_input
       tensors.input_text = text_embeddings
@@ -274,13 +280,18 @@ class Model(object):
       tensors.input_price = price
       tensors.input_images_count = images_count
       tensors.input_recent_articles_count = recent_articles_count
+      tensors.input_title_length = title_length
+      tensors.input_content_length = content_length
       tensors.input_blocks_inline = blocks_inline
+      tensors.input_user_name = user_name
 
       extra_embeddings = get_extra_embeddings(tensors)
 
       category_ids = tf.reshape(category_ids, [-1, 1])
       price = tf.reshape(price, [-1, 1])
       images_count = tf.reshape(images_count, [-1, 1])
+      title_length = tf.reshape(title_length, [-1, 1])
+      content_length = tf.reshape(content_length, [-1, 1])
       recent_articles_count = tf.reshape(recent_articles_count, [-1, 1])
     else:
       # For training and evaluation we assume data is preprocessed, so the
@@ -317,7 +328,13 @@ class Model(object):
                 tf.FixedLenFeature(shape=[1], dtype=tf.int64),
             'recent_articles_count':
                 tf.FixedLenFeature(shape=[1], dtype=tf.int64),
+            'title_length':
+                tf.FixedLenFeature(shape=[1], dtype=tf.int64),
+            'content_length':
+                tf.FixedLenFeature(shape=[1], dtype=tf.int64),
             'blocks_inline':
+                tf.FixedLenFeature(shape=[], dtype=tf.string),
+            'user_name':
                 tf.FixedLenFeature(shape=[], dtype=tf.string),
         }
         parsed = tf.parse_example(tensors.examples, features=feature_map)
@@ -332,6 +349,8 @@ class Model(object):
         price = parsed['price']
         images_count = parsed['images_count']
         recent_articles_count = parsed['recent_articles_count']
+        title_length = parsed['title_length']
+        content_length = parsed['content_length']
         blocks_inline = parsed['blocks_inline']
 
     dropout_keep_prob = self.dropout if is_training else None
@@ -346,7 +365,8 @@ class Model(object):
 
     with tf.name_scope("continuous_features"):
         blocks = blocks_inline_to_matrix(blocks_inline)
-        continuous_features = tf.concat([price, images_count, recent_articles_count], 1)
+        continuous_features = tf.concat([price, images_count, recent_articles_count,
+            title_length, content_length], 1)
         continuous_features = tf.cast(continuous_features, tf.float32)
         continuous_features = tf.concat([continuous_features, blocks], 1)
         continuous_features = layers.fully_connected(continuous_features, 10,
@@ -382,7 +402,7 @@ class Model(object):
               initial_state = tf.nn.dropout(initial_state, dropout_keep_prob)
 
       layer_sizes = [WORD_DIM * (2**i) for i in range(self.rnn_layers_count)]
-      text_embeddings = tf.reshape(text_embeddings, [-1, MAX_TEXT_LENGTH, WORD_DIM])
+      text_embeddings = tf.reshape(text_embeddings, [-1, MAX_WORDS_LENGTH, WORD_DIM])
       base_cell = tf.contrib.rnn.BasicLSTMCell if self.rnn_type == 'LSTM' else tf.contrib.rnn.GRUCell
       text_outputs, text_last_states = stack_bidirectional_dynamic_rnn(text_embeddings, layer_sizes,
               text_lengths, initial_state=initial_state, base_cell=base_cell,
@@ -508,7 +528,10 @@ class Model(object):
         'created_at_ts': tensors.input_created_at_ts,
         'offerable': tensors.input_offerable,
         'recent_articles_count': tensors.input_recent_articles_count,
+        'title_length': tensors.input_title_length,
+        'content_length': tensors.input_content_length,
         'blocks_inline': tensors.input_blocks_inline,
+        'user_name': tensors.input_user_name,
     }
 
     # To extract the id, we need to add the identity function.

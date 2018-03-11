@@ -1,3 +1,4 @@
+#-*- coding: utf-8 -*-
 # Copyright 2016 Google Inc. All Rights Reserved.
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -88,7 +89,7 @@ from tensorflow.contrib.slim.python.slim.nets import inception_v3 as inception
 from tensorflow.python.framework import errors
 from tensorflow.python.lib.io import file_io
 
-from trainer.model import BOTTLENECK_TENSOR_SIZE, WORD_DIM, MAX_TEXT_LENGTH, TOTAL_CATEGORIES_COUNT
+from trainer.model import BOTTLENECK_TENSOR_SIZE, WORD_DIM, MAX_WORDS_LENGTH, TOTAL_CATEGORIES_COUNT
 from trainer.model import get_extra_embeddings, GraphReferences
 from trainer.emb import id_to_path, ID_COL, LABEL_COL, IMAGES_COUNT_COL
 
@@ -228,7 +229,7 @@ class ExtractTextDataDoFn(beam.DoFn):
     key = item[1]
     created_at_ts = item[5]
     offerable = item[6]
-    text_embedding_inline = item[9]
+    text_embedding_inline = item[12]
 
     extra_embedding = self.sess.run(self.extra_embeddings, feed_dict={
           self.tensors.input_offerable: [offerable],
@@ -236,7 +237,7 @@ class ExtractTextDataDoFn(beam.DoFn):
           })[0]
 
     try:
-        text_embedding, text_length = self.get_embedding_and_length(text_embedding_inline, MAX_TEXT_LENGTH)
+        text_embedding, text_length = self.get_embedding_and_length(text_embedding_inline, MAX_WORDS_LENGTH)
         if text_length < 1:
             no_texts_count.inc()
             logging.error('no text: %s', text_embedding_inline)
@@ -292,6 +293,9 @@ class TFExampleFromImageDoFn(beam.DoFn):
     images_count = int(row[4])
     recent_articles_count = int(row[7])
     blocks_inline = row[8]
+    title_length = int(row[9])
+    content_length = int(row[10])
+    user_name = row[11]
 
     if category_id < 1 or category_id - 1 > TOTAL_CATEGORIES_COUNT:
         error_count.inc()
@@ -312,7 +316,10 @@ class TFExampleFromImageDoFn(beam.DoFn):
         'price': _int_feature([price]),
         'images_count': _int_feature([images_count]),
         'recent_articles_count': _int_feature([recent_articles_count]),
+        'title_length': _int_feature([title_length]),
+        'content_length': _int_feature([content_length]),
         'blocks_inline': _bytes_feature([blocks_inline]),
+        'user_name': _bytes_feature([user_name]),
         'label': _int_feature(label_ids),
     }))
 
@@ -329,7 +336,7 @@ def configure_pipeline(p, opt):
 
   _ = (p
        | 'Read input' >> read_input_source
-       | 'Parse input' >> beam.Map(lambda line: csv.reader([line]).next())
+       | 'Parse input' >> beam.Map(lambda line: csv.reader([line.encode('utf-8')]).next())
        | 'Extract label ids' >> beam.ParDo(ExtractLabelIdsDoFn(),
                                            beam.pvalue.AsIter(labels))
        | 'Read and convert to JPEG'
