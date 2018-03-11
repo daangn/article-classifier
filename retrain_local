@@ -27,6 +27,7 @@ if [[ $CMD == 'gen' ]]; then
   echo "Generate csv files"
   rm -f data/train_set*.csv data/eval_set*.csv
   python gen_csv.py
+  python gen_char_dict.py
 
 elif [[ $CMD == 'pre' ]]; then
 
@@ -37,6 +38,7 @@ elif [[ $CMD == 'pre' ]]; then
     python -E preprocess.py \
       --input_dict "$DICT_FILE" \
       --input_path "${f}" \
+      --char_dict "${DATA_PATH}/char_dict.txt" \
       --output_path "${GCS_PATH}/preproc/eval${n}"
   done
 
@@ -47,6 +49,7 @@ elif [[ $CMD == 'pre' ]]; then
     python -E preprocess.py \
       --input_dict "$DICT_FILE" \
       --input_path "${f}" \
+      --char_dict "${DATA_PATH}/char_dict.txt" \
       --output_path "${GCS_PATH}/preproc/train${n}"
   done
 
@@ -75,6 +78,7 @@ elif [[ $CMD == 'train' ]] || [[ $CMD == 'train_test' ]]; then
     --eval_data_paths "${GCS_PATH}/preproc/eval*" \
     --train_data_paths "${TRAIN_PATHS}" \
     --input_dict "$DICT_FILE" \
+    --char_dict "${DATA_PATH}/char_dict.txt" \
     --attention 'no_use' \
     --rnn_type 'LSTM' \
     --rnn_layers_count 2 \

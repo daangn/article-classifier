@@ -89,7 +89,8 @@ from tensorflow.contrib.slim.python.slim.nets import inception_v3 as inception
 from tensorflow.python.framework import errors
 from tensorflow.python.lib.io import file_io
 
-from trainer.model import BOTTLENECK_TENSOR_SIZE, WORD_DIM, MAX_WORDS_LENGTH, TOTAL_CATEGORIES_COUNT
+from trainer.model import BOTTLENECK_TENSOR_SIZE, WORD_DIM, MAX_WORDS_LENGTH, \
+        TOTAL_CATEGORIES_COUNT, MAX_USERNAME_CHARS_COUNT
 from trainer.model import get_extra_embeddings, GraphReferences
 from trainer.emb import id_to_path, ID_COL, LABEL_COL, IMAGES_COUNT_COL
 
@@ -120,9 +121,11 @@ class ExtractLabelIdsDoFn(beam.DoFn):
 
   def start_bundle(self, context=None):
     self.label_to_id_map = {}
+    self.char_to_id_map = {}
+    self.unk_char_id = None
 
   # The try except is for compatiblity across multiple versions of the sdk
-  def process(self, row, all_labels):
+  def process(self, row, all_labels, all_chars):
     try:
       row = row.element
     except AttributeError:
@@ -131,6 +134,11 @@ class ExtractLabelIdsDoFn(beam.DoFn):
       for i, label in enumerate(all_labels):
         label = label.strip()
         self.label_to_id_map[label] = i
+      for i, char in enumerate(all_chars):
+        char = char.strip()
+        self.char_to_id_map[char] = i
+      self.unk_char_id = i + 1
+      logging.info('unk_char_id: %d', self.unk_char_id)
 
     # Row format is: image_uri(,label_ids)*
     if not row:
@@ -157,7 +165,14 @@ class ExtractLabelIdsDoFn(beam.DoFn):
 
     if not label_ids:
       unlabeled_image.inc()
-    yield row, label_ids
+
+    username = row[11].decode('utf-8')
+    username_char_ids = [
+            self.char_to_id_map[char]
+            if char in self.char_to_id_map else self.unk_char_id
+            for char in list(username)]
+
+    yield row, label_ids, username_char_ids
 
 
 class ReadImageAndConvertToJpegDoFn(beam.DoFn):
@@ -173,9 +188,9 @@ class ReadImageAndConvertToJpegDoFn(beam.DoFn):
 
   def process(self, element):
     try:
-      row, label_ids = element.element
+      row, label_ids, username_char_ids = element.element
     except AttributeError:
-      row, label_ids = element
+      row, label_ids, username_char_ids = element
 
     id = int(row[ID_COL])
     images_count = int(row[IMAGES_COUNT_COL])
@@ -191,7 +206,7 @@ class ReadImageAndConvertToJpegDoFn(beam.DoFn):
         else:
             embedding = self._fetch_embedding(emb_filepath)
 
-    yield row, label_ids, embedding
+    yield row, label_ids, username_char_ids, embedding
 
   def _fetch_embedding(self, emb_filepath):
     try:
@@ -222,9 +237,9 @@ class ExtractTextDataDoFn(beam.DoFn):
 
   def process(self, element):
     try:
-      item, label_ids, embedding = element.element
+      item, label_ids, username_char_ids, embedding = element.element
     except AttributeError:
-      item, label_ids, embedding = element
+      item, label_ids, username_char_ids, embedding = element
 
     key = item[1]
     created_at_ts = item[5]
@@ -246,7 +261,7 @@ class ExtractTextDataDoFn(beam.DoFn):
         logging.error(text_embedding_inline)
         raise e
 
-    yield item, label_ids, embedding, {
+    yield item, label_ids, username_char_ids, embedding, {
           'text_embedding': text_embedding,
           'text_length': text_length,
           'extra_embedding': list(extra_embedding),
@@ -285,7 +300,7 @@ class TFExampleFromImageDoFn(beam.DoFn):
       element = element.element
     except AttributeError:
       pass
-    row, label_ids, embedding, data = element
+    row, label_ids, username_char_ids, embedding, data = element
 
     id = row[ID_COL]
     category_id = int(row[2])
@@ -295,7 +310,6 @@ class TFExampleFromImageDoFn(beam.DoFn):
     blocks_inline = row[8]
     title_length = int(row[9])
     content_length = int(row[10])
-    user_name = row[11]
 
     if category_id < 1 or category_id - 1 > TOTAL_CATEGORIES_COUNT:
         error_count.inc()
@@ -305,6 +319,12 @@ class TFExampleFromImageDoFn(beam.DoFn):
         embedding = self._empty_embedding
     else:
         embedding = embedding.ravel().tolist()
+
+    username_length = len(username_char_ids)
+    if username_length < MAX_USERNAME_CHARS_COUNT:
+        username_char_ids += [0] * (MAX_USERNAME_CHARS_COUNT - username_length)
+    elif username_length > MAX_USERNAME_CHARS_COUNT:
+        username_char_ids = username_char_ids[0:MAX_USERNAME_CHARS_COUNT]
 
     example = tf.train.Example(features=tf.train.Features(feature={
         'id': _bytes_feature([id]),
@@ -319,7 +339,8 @@ class TFExampleFromImageDoFn(beam.DoFn):
         'title_length': _int_feature([title_length]),
         'content_length': _int_feature([content_length]),
         'blocks_inline': _bytes_feature([blocks_inline]),
-        'user_name': _bytes_feature([user_name]),
+        'username_char_ids': _int_feature(username_char_ids),
+        'username_length': _int_feature([username_length]),
         'label': _int_feature(label_ids),
     }))
 
@@ -332,13 +353,17 @@ def configure_pipeline(p, opt):
       opt.input_path, strip_trailing_newlines=True)
   read_label_source = beam.io.ReadFromText(
       opt.input_dict, strip_trailing_newlines=True)
+  read_char_source = beam.io.ReadFromText(
+      opt.char_dict, strip_trailing_newlines=True)
   labels = (p | 'Read dictionary' >> read_label_source)
+  chars = (p | 'Read character dictionary' >> read_char_source)
 
   _ = (p
        | 'Read input' >> read_input_source
        | 'Parse input' >> beam.Map(lambda line: csv.reader([line.encode('utf-8')]).next())
        | 'Extract label ids' >> beam.ParDo(ExtractLabelIdsDoFn(),
-                                           beam.pvalue.AsIter(labels))
+                                           beam.pvalue.AsIter(labels),
+                                           beam.pvalue.AsIter(chars))
        | 'Read and convert to JPEG'
        >> beam.ParDo(ReadImageAndConvertToJpegDoFn(opt.emb_path))
        | 'Extract text data' >> beam.ParDo(ExtractTextDataDoFn())
@@ -375,10 +400,14 @@ def default_args(argv):
       help='')
   parser.add_argument(
       '--input_dict',
-      dest='input_dict',
       required=True,
       help='Input dictionary. Specified as text file uri. '
       'Each line of the file stores one label.')
+  parser.add_argument(
+      '--char_dict',
+      required=True,
+      help='User name character dictionary. Specified as text file uri. '
+      'Each line of the file stores one char.')
   parser.add_argument(
       '--output_path',
       required=True,

@@ -28,14 +28,17 @@ if [[ $CMD == 'gen' ]]; then
   echo "Generate csv files"
   rm -f data/train_set*.csv data/eval_set*.csv
   python gen_csv.py
+  python gen_char_dict.py
 
   echo "Uploading ${DATA_PATH}"
   gsutil -m rm "${DATA_PATH}/eval_set*.csv"
   gsutil -m rm "${DATA_PATH}/train_set*.csv"
   gsutil -m rm "${DATA_PATH}/article_dict.txt"
+  gsutil -m rm "${DATA_PATH}/char_dict.txt"
   gsutil -m cp data/eval_set*.csv $DATA_PATH
   gsutil -m cp data/train_set*.csv $DATA_PATH
   gsutil -m cp data/article_dict.txt $DATA_PATH
+  gsutil -m cp data/char_dict.txt $DATA_PATH
 
 elif [[ $CMD == 'pre' ]]; then
   echo "data: ${DATA_PATH}"
@@ -47,6 +50,7 @@ elif [[ $CMD == 'pre' ]]; then
     --job_name $JOB_NAME \
     --input_dict "$DICT_FILE" \
     --input_path "${DATA_PATH}/eval_set*.csv" \
+    --char_dict "${DATA_PATH}/char_dict.txt" \
     --output_path "${GCS_PATH}/preproc/eval" \
     --emb_path "${DATA_PATH}/image_embeddings" \
     --setup_file ./setup.py \
@@ -62,6 +66,7 @@ elif [[ $CMD == 'pre' ]]; then
     --job_name $JOB_NAME \
     --input_dict "$DICT_FILE" \
     --input_path "${DATA_PATH}/train_set*.csv" \
+    --char_dict "${DATA_PATH}/char_dict.txt" \
     --output_path "${GCS_PATH}/preproc/train" \
     --emb_path "${DATA_PATH}/image_embeddings" \
     --setup_file ./setup.py \
@@ -111,6 +116,7 @@ elif [[ $CMD == 'train' ]] || [[ $CMD == 'train_test' ]]; then
     --eval_data_paths "${GCS_PATH}/preproc/eval*" \
     --train_data_paths "${TRAIN_PATHS}" \
     --input_dict "$DICT_FILE" \
+    --char_dict "${DATA_PATH}/char_dict.txt" \
     --attention 'no_use' \
     --rnn_type 'LSTM' \
     --rnn_layers_count 2 \
@@ -137,6 +143,7 @@ elif [[ $CMD == 'write_predict' ]]; then
     --output_path "${GCS_PATH}/training_${OUTPUT_ID}" \
     --eval_data_paths $DATA_PATHS \
     --eval_set_size $DATA_COUNT \
+    --char_dict "${DATA_PATH}/char_dict.txt" \
     --attention 'no_use' \
     --rnn_layers_count 2 \
     --final_layers_count 2 \

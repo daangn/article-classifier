@@ -54,8 +54,7 @@ TEXT_EMBEDDING_SIZE = WORD_DIM * MAX_WORDS_LENGTH
 FEATURES_COUNT = 3
 BLOCKS_COUNT = 67
 EXTRA_EMBEDDING_SIZE = FEATURES_COUNT
-    #+ len(PRICE_SECTION) \
-    #+ len(IMAGE_COUNT_SECTION) + len(RECENT_ARTICLES_COUNT_SECTION)
+MAX_USERNAME_CHARS_COUNT = 12
 
 
 class GraphMod():
@@ -96,6 +95,7 @@ def create_model():
   parser.add_argument('--label_count', type=int)
   parser.add_argument('--dropout', type=float, default=0.5)
   parser.add_argument('--input_dict', type=str)
+  parser.add_argument('--char_dict', type=str)
   parser.add_argument('--attention', type=str, default='no_use')
   parser.add_argument('--rnn_type', type=str, default='LSTM')
   parser.add_argument('--rnn_layers_count', type=int, default=2)
@@ -110,7 +110,8 @@ def create_model():
   return Model(args.label_count, args.dropout, args.input_dict,
           use_attention=args.attention=='use', rnn_type=args.rnn_type,
           rnn_layers_count=args.rnn_layers_count,
-          final_layers_count=args.final_layers_count), task_args
+          final_layers_count=args.final_layers_count,
+          char_dict_path=args.char_dict), task_args
 
 
 class GraphReferences(object):
@@ -135,7 +136,8 @@ class GraphReferences(object):
     self.input_title_length = None
     self.input_content_length = None
     self.input_blocks_inline = None
-    self.input_user_name = None
+    self.input_username_char_ids = None
+    self.input_username_length = None
     self.input_text_length = None
     self.ids = None
     self.labels = None
@@ -184,7 +186,7 @@ class Model(object):
   """TensorFlow model for the flowers problem."""
 
   def __init__(self, label_count, dropout, labels_path, use_attention=False,
-          rnn_type='LSTM', rnn_layers_count=2, final_layers_count=2):
+          rnn_type='LSTM', rnn_layers_count=2, final_layers_count=2, char_dict_path=None):
     self.label_count = label_count
     self.dropout = dropout
     self.labels = file_io.read_file_to_string(labels_path).strip().split('\n')
@@ -192,6 +194,9 @@ class Model(object):
     self.rnn_type = rnn_type
     self.rnn_layers_count = rnn_layers_count
     self.final_layers_count = final_layers_count
+
+    chars = file_io.read_file_to_string(char_dict_path).strip().split('\n')
+    self.username_char_dict_size = len(chars) + 1 # add unknown char
 
   def get_labels(self):
       return self.labels
@@ -271,7 +276,8 @@ class Model(object):
       title_length = tf.placeholder(tf.int64, shape=[None])
       content_length = tf.placeholder(tf.int64, shape=[None])
       blocks_inline = tf.placeholder(tf.string, shape=[None])
-      user_name = tf.placeholder(tf.string, shape=[None])
+      username_char_ids = tf.placeholder(tf.int64, shape=[None, MAX_USERNAME_CHARS_COUNT])
+      username_length = tf.placeholder(tf.int64, shape=[None])
 
       tensors.input_image = inception_input
       tensors.input_text = text_embeddings
@@ -283,7 +289,8 @@ class Model(object):
       tensors.input_title_length = title_length
       tensors.input_content_length = content_length
       tensors.input_blocks_inline = blocks_inline
-      tensors.input_user_name = user_name
+      tensors.input_username_char_ids = username_char_ids
+      tensors.input_username_length = username_length
 
       extra_embeddings = get_extra_embeddings(tensors)
 
@@ -334,8 +341,10 @@ class Model(object):
                 tf.FixedLenFeature(shape=[1], dtype=tf.int64),
             'blocks_inline':
                 tf.FixedLenFeature(shape=[], dtype=tf.string),
-            'user_name':
-                tf.FixedLenFeature(shape=[], dtype=tf.string),
+            'username_char_ids':
+                tf.FixedLenFeature(shape=[MAX_USERNAME_CHARS_COUNT], dtype=tf.int64),
+            'username_length':
+                tf.FixedLenFeature(shape=[], dtype=tf.int64),
         }
         parsed = tf.parse_example(tensors.examples, features=feature_map)
         labels = tf.squeeze(parsed['label'])
@@ -352,8 +361,17 @@ class Model(object):
         title_length = parsed['title_length']
         content_length = parsed['content_length']
         blocks_inline = parsed['blocks_inline']
+        username_char_ids = parsed['username_char_ids']
+        username_length = parsed['username_length']
 
     dropout_keep_prob = self.dropout if is_training else None
+
+    with tf.name_scope("username_embeddings"):
+        x = tf.keras.layers.Embedding(self.username_char_dict_size, 10)(username_char_ids)
+        outputs, last_states = stack_bidirectional_dynamic_rnn(x, [10],
+                username_length, base_cell=tf.contrib.rnn.GRUCell,
+                dropout_keep_prob=dropout_keep_prob, is_training=is_training)
+        username = last_states
 
     with tf.name_scope("category_embeddings"):
         category_embeddings = tf.get_variable('table', [TOTAL_CATEGORIES_COUNT, 5])
@@ -384,7 +402,8 @@ class Model(object):
           image_embeddings = tf.nn.dropout(image_embeddings, dropout_keep_prob)
 
     with tf.name_scope('bunch'):
-      bunch = tf.concat([image_embeddings, category_embeddings, continuous_features, extra_embeddings],
+      bunch = tf.concat([image_embeddings, category_embeddings,
+          continuous_features, extra_embeddings, username],
               1, name='concat_without_text')
       bunch = layers.fully_connected(bunch, BOTTLENECK_TENSOR_SIZE / 8)
       if dropout_keep_prob:
@@ -531,7 +550,8 @@ class Model(object):
         'title_length': tensors.input_title_length,
         'content_length': tensors.input_content_length,
         'blocks_inline': tensors.input_blocks_inline,
-        'user_name': tensors.input_user_name,
+        'username_char_ids': tensors.input_username_char_ids,
+        'username_length': tensors.input_username_length,
     }
 
     # To extract the id, we need to add the identity function.
