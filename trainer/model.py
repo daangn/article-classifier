@@ -366,14 +366,13 @@ class Model(object):
 
     dropout_keep_prob = self.dropout if is_training else None
 
-    with tf.name_scope("username_embeddings"):
+    with tf.variable_scope("username"):
         x = tf.keras.layers.Embedding(self.username_char_dict_size, 10)(username_char_ids)
         outputs, last_states = stack_bidirectional_dynamic_rnn(x, [10],
-                username_length, base_cell=tf.contrib.rnn.GRUCell,
-                dropout_keep_prob=dropout_keep_prob, is_training=is_training)
+                username_length, dropout_keep_prob=dropout_keep_prob, is_training=is_training)
         username = last_states
 
-    with tf.name_scope("category_embeddings"):
+    with tf.name_scope("category"):
         category_embeddings = tf.get_variable('table', [TOTAL_CATEGORIES_COUNT, 5])
         category_ids = tf.minimum(category_ids - 1, TOTAL_CATEGORIES_COUNT - 1)
         category_ids = tf.reshape(category_ids, [-1])
@@ -381,10 +380,12 @@ class Model(object):
         if dropout_keep_prob:
             category_embeddings = tf.nn.dropout(category_embeddings, dropout_keep_prob)
 
-    with tf.name_scope("continuous_features"):
+    with tf.name_scope("continuous"):
         blocks = blocks_inline_to_matrix(blocks_inline)
         continuous_features = tf.concat([price, images_count, recent_articles_count,
             title_length, content_length], 1)
+        continuous_features = tf.concat([continuous_features,
+            continuous_features * continuous_features], 1)
         continuous_features = tf.cast(continuous_features, tf.float32)
         continuous_features = tf.concat([continuous_features, blocks], 1)
         continuous_features = layers.fully_connected(continuous_features, 10,
@@ -393,7 +394,7 @@ class Model(object):
         if dropout_keep_prob:
             continuous_features = tf.nn.dropout(continuous_features, dropout_keep_prob)
 
-    with tf.name_scope("image_embeddings"):
+    with tf.name_scope("image"):
       image_embeddings = layers.fully_connected(image_embeddings, BOTTLENECK_TENSOR_SIZE / 4)
       if dropout_keep_prob:
           image_embeddings = tf.nn.dropout(image_embeddings, dropout_keep_prob)
