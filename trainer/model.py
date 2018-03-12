@@ -23,7 +23,7 @@ from tensorflow.contrib import layers
 from tensorflow.python.saved_model import builder as saved_model_builder
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import signature_def_utils
-from tensorflow.python.saved_model import tag_constants
+from tensorflow.python.saved_model import tag_constants, main_op
 from tensorflow.python.saved_model import utils as saved_model_utils
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
@@ -136,11 +136,13 @@ class GraphReferences(object):
     self.input_title_length = None
     self.input_content_length = None
     self.input_blocks_inline = None
-    self.input_username_char_ids = None
+    self.input_username_chars = None
     self.input_username_length = None
     self.input_text_length = None
     self.ids = None
     self.labels = None
+    self.username_char_ids = None # temp
+    self.username_chars = None # temp
 
 def find_nearest_idx(array, value):
     return tf.argmin(tf.abs(
@@ -195,8 +197,8 @@ class Model(object):
     self.rnn_layers_count = rnn_layers_count
     self.final_layers_count = final_layers_count
 
-    chars = file_io.read_file_to_string(char_dict_path).strip().split('\n')
-    self.username_char_dict_size = len(chars) + 1 # add unknown char
+    username_chars = file_io.read_file_to_string(char_dict_path).decode('utf-8').strip().split('\n')
+    self.username_chars = username_chars
 
   def get_labels(self):
       return self.labels
@@ -276,7 +278,7 @@ class Model(object):
       title_length = tf.placeholder(tf.int64, shape=[None])
       content_length = tf.placeholder(tf.int64, shape=[None])
       blocks_inline = tf.placeholder(tf.string, shape=[None])
-      username_char_ids = tf.placeholder(tf.int64, shape=[None, MAX_USERNAME_CHARS_COUNT])
+      username_chars = tf.placeholder(tf.string, shape=[None, MAX_USERNAME_CHARS_COUNT])
       username_length = tf.placeholder(tf.int64, shape=[None])
 
       tensors.input_image = inception_input
@@ -289,17 +291,11 @@ class Model(object):
       tensors.input_title_length = title_length
       tensors.input_content_length = content_length
       tensors.input_blocks_inline = blocks_inline
-      tensors.input_username_char_ids = username_char_ids
+      tensors.input_username_chars = username_chars
       tensors.input_username_length = username_length
 
       extra_embeddings = get_extra_embeddings(tensors)
-
-      category_ids = tf.reshape(category_ids, [-1, 1])
-      price = tf.reshape(price, [-1, 1])
-      images_count = tf.reshape(images_count, [-1, 1])
-      title_length = tf.reshape(title_length, [-1, 1])
-      content_length = tf.reshape(content_length, [-1, 1])
-      recent_articles_count = tf.reshape(recent_articles_count, [-1, 1])
+      username_chars = tf.reshape(username_chars, [-1, MAX_USERNAME_CHARS_COUNT])
     else:
       # For training and evaluation we assume data is preprocessed, so the
       # inputs are tf-examples.
@@ -328,21 +324,21 @@ class Model(object):
                 tf.FixedLenFeature(
                     shape=[EXTRA_EMBEDDING_SIZE], dtype=tf.float32),
             'category_id':
-                tf.FixedLenFeature(shape=[1], dtype=tf.int64),
+                tf.FixedLenFeature(shape=[], dtype=tf.int64),
             'price':
-                tf.FixedLenFeature(shape=[1], dtype=tf.int64),
+                tf.FixedLenFeature(shape=[], dtype=tf.int64),
             'images_count':
-                tf.FixedLenFeature(shape=[1], dtype=tf.int64),
+                tf.FixedLenFeature(shape=[], dtype=tf.int64),
             'recent_articles_count':
-                tf.FixedLenFeature(shape=[1], dtype=tf.int64),
+                tf.FixedLenFeature(shape=[], dtype=tf.int64),
             'title_length':
-                tf.FixedLenFeature(shape=[1], dtype=tf.int64),
+                tf.FixedLenFeature(shape=[], dtype=tf.int64),
             'content_length':
-                tf.FixedLenFeature(shape=[1], dtype=tf.int64),
+                tf.FixedLenFeature(shape=[], dtype=tf.int64),
             'blocks_inline':
                 tf.FixedLenFeature(shape=[], dtype=tf.string),
-            'username_char_ids':
-                tf.FixedLenFeature(shape=[MAX_USERNAME_CHARS_COUNT], dtype=tf.int64),
+            'username_chars':
+                tf.FixedLenFeature(shape=[MAX_USERNAME_CHARS_COUNT], dtype=tf.string),
             'username_length':
                 tf.FixedLenFeature(shape=[], dtype=tf.int64),
         }
@@ -361,13 +357,20 @@ class Model(object):
         title_length = parsed['title_length']
         content_length = parsed['content_length']
         blocks_inline = parsed['blocks_inline']
-        username_char_ids = parsed['username_char_ids']
+        username_chars = parsed['username_chars']
         username_length = parsed['username_length']
 
     dropout_keep_prob = self.dropout if is_training else None
 
     with tf.variable_scope("username"):
-        x = tf.keras.layers.Embedding(self.username_char_dict_size, 10)(username_char_ids)
+        table = tf.contrib.lookup.index_table_from_tensor(
+                mapping=tf.constant(self.username_chars),
+                default_value=len(self.username_chars))
+        username_char_ids = table.lookup(username_chars)
+        tensors.username_chars = username_chars
+        tensors.username_char_ids = username_char_ids
+        username_char_dict_size = len(self.username_chars) + 1 # add unknown char
+        x = tf.keras.layers.Embedding(username_char_dict_size, 10)(username_char_ids)
         outputs, last_states = stack_bidirectional_dynamic_rnn(x, [10],
                 username_length, dropout_keep_prob=dropout_keep_prob, is_training=is_training)
         username = last_states
@@ -375,7 +378,6 @@ class Model(object):
     with tf.name_scope("category"):
         category_embeddings = tf.get_variable('table', [TOTAL_CATEGORIES_COUNT, 5])
         category_ids = tf.minimum(category_ids - 1, TOTAL_CATEGORIES_COUNT - 1)
-        category_ids = tf.reshape(category_ids, [-1])
         category_embeddings = tf.nn.embedding_lookup(category_embeddings, category_ids)
         if dropout_keep_prob:
             category_embeddings = tf.nn.dropout(category_embeddings, dropout_keep_prob)
@@ -383,7 +385,8 @@ class Model(object):
     with tf.name_scope("continuous"):
         blocks = blocks_inline_to_matrix(blocks_inline)
         continuous_features = tf.concat([price, images_count, recent_articles_count,
-            title_length, content_length], 1)
+            title_length, content_length], 0)
+        continuous_features = tf.reshape(continuous_features, [-1, 5])
         continuous_features = tf.concat([continuous_features,
             continuous_features * continuous_features], 1)
         continuous_features = tf.cast(continuous_features, tf.float32)
@@ -551,7 +554,7 @@ class Model(object):
         'title_length': tensors.input_title_length,
         'content_length': tensors.input_content_length,
         'blocks_inline': tensors.input_blocks_inline,
-        'username_char_ids': tensors.input_username_char_ids,
+        'username_chars': tensors.input_username_chars,
         'username_length': tensors.input_username_length,
     }
 
@@ -560,7 +563,8 @@ class Model(object):
     outputs = {
         'key': keys,
         'prediction': tensors.predictions[0],
-        'scores': tensors.predictions[1]
+        'scores': tensors.predictions[1],
+        'username_char_ids': tensors.username_char_ids,
     }
 
     return inputs, outputs
@@ -576,7 +580,7 @@ class Model(object):
     with tf.Session(graph=tf.Graph()) as sess:
       # Build and save prediction meta graph and trained variable values.
       inputs, outputs = self.build_prediction_graph()
-      init_op = tf.global_variables_initializer()
+      init_op = [tf.global_variables_initializer(), tf.tables_initializer()]
       sess.run(init_op)
       self.restore_from_checkpoint(sess, last_checkpoint)
       signature_def = build_signature(inputs=inputs, outputs=outputs)
@@ -587,7 +591,9 @@ class Model(object):
       builder.add_meta_graph_and_variables(
           sess,
           tags=[tag_constants.SERVING],
-          signature_def_map=signature_def_map)
+          signature_def_map=signature_def_map,
+          # https://stackoverflow.com/questions/44236090/how-to-keep-tensorflow-lookup-tables-initialized-for-prediction-and-not-just-tr
+          legacy_init_op=main_op.main_op())
       builder.save()
 
   def format_metric_values(self, metric_values):

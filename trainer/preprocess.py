@@ -166,13 +166,7 @@ class ExtractLabelIdsDoFn(beam.DoFn):
     if not label_ids:
       unlabeled_image.inc()
 
-    username = row[11].decode('utf-8')
-    username_char_ids = [
-            self.char_to_id_map[char]
-            if char in self.char_to_id_map else self.unk_char_id
-            for char in list(username)]
-
-    yield row, label_ids, username_char_ids
+    yield row, label_ids
 
 
 class ReadImageAndConvertToJpegDoFn(beam.DoFn):
@@ -188,9 +182,9 @@ class ReadImageAndConvertToJpegDoFn(beam.DoFn):
 
   def process(self, element):
     try:
-      row, label_ids, username_char_ids = element.element
+      row, label_ids = element.element
     except AttributeError:
-      row, label_ids, username_char_ids = element
+      row, label_ids = element
 
     id = int(row[ID_COL])
     images_count = int(row[IMAGES_COUNT_COL])
@@ -206,7 +200,7 @@ class ReadImageAndConvertToJpegDoFn(beam.DoFn):
         else:
             embedding = self._fetch_embedding(emb_filepath)
 
-    yield row, label_ids, username_char_ids, embedding
+    yield row, label_ids, embedding
 
   def _fetch_embedding(self, emb_filepath):
     try:
@@ -237,9 +231,9 @@ class ExtractTextDataDoFn(beam.DoFn):
 
   def process(self, element):
     try:
-      item, label_ids, username_char_ids, embedding = element.element
+      item, label_ids, embedding = element.element
     except AttributeError:
-      item, label_ids, username_char_ids, embedding = element
+      item, label_ids, embedding = element
 
     key = item[1]
     created_at_ts = item[5]
@@ -261,7 +255,7 @@ class ExtractTextDataDoFn(beam.DoFn):
         logging.error(text_embedding_inline)
         raise e
 
-    yield item, label_ids, username_char_ids, embedding, {
+    yield item, label_ids, embedding, {
           'text_embedding': text_embedding,
           'text_length': text_length,
           'extra_embedding': list(extra_embedding),
@@ -300,7 +294,7 @@ class TFExampleFromImageDoFn(beam.DoFn):
       element = element.element
     except AttributeError:
       pass
-    row, label_ids, username_char_ids, embedding, data = element
+    row, label_ids, embedding, data = element
 
     id = row[ID_COL]
     category_id = int(row[2])
@@ -320,11 +314,16 @@ class TFExampleFromImageDoFn(beam.DoFn):
     else:
         embedding = embedding.ravel().tolist()
 
-    username_length = len(username_char_ids)
+    username = row[11].decode('utf-8')
+    username_length = len(username)
+    username_chars = list(username)
+
     if username_length < MAX_USERNAME_CHARS_COUNT:
-        username_char_ids += [0] * (MAX_USERNAME_CHARS_COUNT - username_length)
+        username_chars += [u''] * (MAX_USERNAME_CHARS_COUNT - username_length)
     elif username_length > MAX_USERNAME_CHARS_COUNT:
-        username_char_ids = username_char_ids[0:MAX_USERNAME_CHARS_COUNT]
+        username_chars = username_chars[0:MAX_USERNAME_CHARS_COUNT]
+
+    username_chars = [x.encode('utf-8') for x in username_chars]
 
     example = tf.train.Example(features=tf.train.Features(feature={
         'id': _bytes_feature([id]),
@@ -339,7 +338,7 @@ class TFExampleFromImageDoFn(beam.DoFn):
         'title_length': _int_feature([title_length]),
         'content_length': _int_feature([content_length]),
         'blocks_inline': _bytes_feature([blocks_inline]),
-        'username_char_ids': _int_feature(username_char_ids),
+        'username_chars': _bytes_feature(username_chars),
         'username_length': _int_feature([username_length]),
         'label': _int_feature(label_ids),
     }))
