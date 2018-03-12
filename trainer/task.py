@@ -140,16 +140,15 @@ class Evaluator(object):
           y_pred = np.append(y_pred, predictions)
 
           for id, label, prediction, score, char_ids, chars in zip(ids, labels, predictions, scores, username_char_ids, username_chars):
-              username = ' '.join([x.decode('utf-8') for x in chars]).encode('utf-8')
-              char_ids = ' '.join(map(str, char_ids))
-              print(id)
-              print(char_ids)
-              print('%s' % username)
+              #username = ' '.join([x.decode('utf-8') for x in chars]).encode('utf-8')
+              #char_ids = ' '.join(map(str, char_ids))
+              #print(id)
+              #print(char_ids)
+              #print('%s' % username)
               if label != prediction:
                   results.append([id, self.model.id_to_key(label), round(score[label], 2),
                       self.model.id_to_key(prediction), round(score[prediction], 2),
-                      round(score[label] - score[prediction], 2),
-                      char_ids, username])
+                      round(score[label] - score[prediction], 2)])
 
         f.write('article_id,label,label_score,predict,predict_score,bad_score\n')
         for item in sorted(results, key=lambda x: x[-1]):
