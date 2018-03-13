@@ -128,7 +128,6 @@ elif [[ $CMD == 'write_predict' ]]; then
   OUTPUT_ID=$(cat data/output_id_cloud)
   DATA_COUNT=`wc -l < data/emb.csv`
 
-  #gcloud ml-engine local train \
   gcloud ml-engine jobs submit training "${MODEL_NAME}_${CMD}_$(date +%m%d_%H%M%S)" \
     --stream-logs \
     --module-name trainer.task \
@@ -143,11 +142,11 @@ elif [[ $CMD == 'write_predict' ]]; then
     --output_path "${GCS_PATH}/training_${OUTPUT_ID}" \
     --eval_data_paths $DATA_PATHS \
     --eval_set_size $DATA_COUNT \
+    --input_dict "$DICT_FILE" \
     --char_dict "${DATA_PATH}/char_dict.txt" \
     --attention 'no_use' \
     --rnn_layers_count 2 \
-    --final_layers_count 2 \
-    --input_dict "$DICT_FILE"
+    --final_layers_count 2
 
   echo "${GCS_PATH}/training_${OUTPUT_ID}"
 
@@ -158,15 +157,20 @@ elif [[ $CMD == 'publish' ]]; then
   if [[ -z $VERSION_NAME ]]; then
     VERSION_NAME="v$(date +%Y%m%d_%H%M%S)"
   fi
-  echo "Version: " $VERSION_NAME
-  echo $VERSION_NAME > data/version_cloud
   OUTPUT_ID=$(cat data/output_id_cloud)
+  ORIGIN="${GCS_PATH}/training_${OUTPUT_ID}/model"
+
+  echo "Model:" $MODEL_NAME
+  echo "Version:" $VERSION_NAME
+  echo "Orgin:" $ORIGIN
+
+  echo $VERSION_NAME > data/version_cloud
 
   gcloud ml-engine versions create "$VERSION_NAME" \
     --model "$MODEL_NAME" \
     --staging-bucket "$BUCKET" \
     --runtime-version=1.4 \
-    --origin "${GCS_PATH}/training_${OUTPUT_ID}/model"
+    --origin $ORIGIN
 
 elif [[ $CMD == 'all' ]]; then
   ./retrain_cloud gen

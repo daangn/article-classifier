@@ -374,6 +374,8 @@ class Model(object):
         outputs, last_states = stack_bidirectional_dynamic_rnn(x, [10],
                 username_length, dropout_keep_prob=dropout_keep_prob, is_training=is_training)
         username = last_states
+        if dropout_keep_prob:
+            username = tf.nn.dropout(username, dropout_keep_prob)
 
     with tf.name_scope("category"):
         category_embeddings = tf.get_variable('table', [TOTAL_CATEGORIES_COUNT, 5])
