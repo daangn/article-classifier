@@ -177,8 +177,11 @@ class Evaluator(object):
         print(f.name)
         print('Accuracy: %.2f' % accuracy)
 
-    report = classification_report(y_true, y_pred, target_names=labels)
-    print(report)
+    with file_io.FileIO(os.path.join(self.output_path, 'classification_report.txt'), 'w') as f:
+        report = classification_report(y_true, y_pred, target_names=labels)
+        f.write(report)
+        print(f.name)
+        print(report)
 
 
 class Trainer(object):
