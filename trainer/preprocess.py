@@ -121,11 +121,9 @@ class ExtractLabelIdsDoFn(beam.DoFn):
 
   def start_bundle(self, context=None):
     self.label_to_id_map = {}
-    self.char_to_id_map = {}
-    self.unk_char_id = None
 
   # The try except is for compatiblity across multiple versions of the sdk
-  def process(self, row, all_labels, all_chars):
+  def process(self, row, all_labels):
     try:
       row = row.element
     except AttributeError:
@@ -134,11 +132,6 @@ class ExtractLabelIdsDoFn(beam.DoFn):
       for i, label in enumerate(all_labels):
         label = label.strip()
         self.label_to_id_map[label] = i
-      for i, char in enumerate(all_chars):
-        char = char.strip()
-        self.char_to_id_map[char] = i
-      self.unk_char_id = i + 1
-      logging.info('unk_char_id: %d', self.unk_char_id)
 
     # Row format is: image_uri(,label_ids)*
     if not row:
@@ -352,17 +345,13 @@ def configure_pipeline(p, opt):
       opt.input_path, strip_trailing_newlines=True)
   read_label_source = beam.io.ReadFromText(
       opt.input_dict, strip_trailing_newlines=True)
-  read_char_source = beam.io.ReadFromText(
-      opt.char_dict, strip_trailing_newlines=True)
   labels = (p | 'Read dictionary' >> read_label_source)
-  chars = (p | 'Read character dictionary' >> read_char_source)
 
   _ = (p
        | 'Read input' >> read_input_source
        | 'Parse input' >> beam.Map(lambda line: csv.reader([line.encode('utf-8')]).next())
        | 'Extract label ids' >> beam.ParDo(ExtractLabelIdsDoFn(),
-                                           beam.pvalue.AsIter(labels),
-                                           beam.pvalue.AsIter(chars))
+                                           beam.pvalue.AsIter(labels))
        | 'Read and convert to JPEG'
        >> beam.ParDo(ReadImageAndConvertToJpegDoFn(opt.emb_path))
        | 'Extract text data' >> beam.ParDo(ExtractTextDataDoFn())
@@ -402,11 +391,6 @@ def default_args(argv):
       required=True,
       help='Input dictionary. Specified as text file uri. '
       'Each line of the file stores one label.')
-  parser.add_argument(
-      '--char_dict',
-      required=True,
-      help='User name character dictionary. Specified as text file uri. '
-      'Each line of the file stores one char.')
   parser.add_argument(
       '--output_path',
       required=True,

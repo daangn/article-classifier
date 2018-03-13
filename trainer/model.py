@@ -49,11 +49,10 @@ RECENT_ARTICLES_COUNT_SECTION = [0, 1, 5, 20, 60, 100]
 
 BOTTLENECK_TENSOR_SIZE = 1536
 WORD_DIM = 50
-MAX_WORDS_LENGTH = 384
+MAX_WORDS_LENGTH = 256
 TEXT_EMBEDDING_SIZE = WORD_DIM * MAX_WORDS_LENGTH
-FEATURES_COUNT = 3
 BLOCKS_COUNT = 67
-EXTRA_EMBEDDING_SIZE = FEATURES_COUNT
+EXTRA_EMBEDDING_SIZE = 3
 MAX_USERNAME_CHARS_COUNT = 12
 
 
@@ -163,7 +162,7 @@ def get_extra_embeddings(tensors):
     day = tf.cast(created_at_ts / DAY_TIME % 7 / 7.0, tf.float32)
 
     extra_embeddings = tf.concat([offerable, created_hour, day], 0)
-    extra_embeddings = tf.reshape(extra_embeddings, [-1, FEATURES_COUNT])
+    extra_embeddings = tf.reshape(extra_embeddings, [-1, EXTRA_EMBEDDING_SIZE])
     return extra_embeddings
 
 def blocks_inline_to_matrix(inline):
@@ -361,13 +360,14 @@ class Model(object):
     dropout_keep_prob = self.dropout if is_training else None
 
     with tf.variable_scope("username"):
+        char_dim = 10
         table = tf.contrib.lookup.index_table_from_tensor(
                 mapping=tf.constant(self.username_chars),
                 default_value=len(self.username_chars))
         username_char_ids = table.lookup(username_chars)
         username_char_dict_size = len(self.username_chars) + 1 # add unknown char
-        x = tf.keras.layers.Embedding(username_char_dict_size, 10)(username_char_ids)
-        outputs, last_states = stack_bidirectional_dynamic_rnn(x, [10],
+        x = tf.keras.layers.Embedding(username_char_dict_size, char_dim)(username_char_ids)
+        outputs, last_states = stack_bidirectional_dynamic_rnn(x, [char_dim],
                 username_length, dropout_keep_prob=dropout_keep_prob, is_training=is_training)
         username = last_states
         if dropout_keep_prob:

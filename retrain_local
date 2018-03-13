@@ -38,7 +38,6 @@ elif [[ $CMD == 'pre' ]]; then
     python -E preprocess.py \
       --input_dict "$DICT_FILE" \
       --input_path "${f}" \
-      --char_dict "${DATA_PATH}/char_dict.txt" \
       --output_path "${GCS_PATH}/preproc/eval${n}"
   done
 
@@ -49,7 +48,6 @@ elif [[ $CMD == 'pre' ]]; then
     python -E preprocess.py \
       --input_dict "$DICT_FILE" \
       --input_path "${f}" \
-      --char_dict "${DATA_PATH}/char_dict.txt" \
       --output_path "${GCS_PATH}/preproc/train${n}"
   done
 

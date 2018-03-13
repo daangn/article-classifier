@@ -50,7 +50,6 @@ elif [[ $CMD == 'pre' ]]; then
     --job_name $JOB_NAME \
     --input_dict "$DICT_FILE" \
     --input_path "${DATA_PATH}/eval_set*.csv" \
-    --char_dict "${DATA_PATH}/char_dict.txt" \
     --output_path "${GCS_PATH}/preproc/eval" \
     --emb_path "${DATA_PATH}/image_embeddings" \
     --setup_file ./setup.py \
@@ -66,7 +65,6 @@ elif [[ $CMD == 'pre' ]]; then
     --job_name $JOB_NAME \
     --input_dict "$DICT_FILE" \
     --input_path "${DATA_PATH}/train_set*.csv" \
-    --char_dict "${DATA_PATH}/char_dict.txt" \
     --output_path "${GCS_PATH}/preproc/train" \
     --emb_path "${DATA_PATH}/image_embeddings" \
     --setup_file ./setup.py \
@@ -145,7 +143,7 @@ elif [[ $CMD == 'write_predict' ]]; then
     --input_dict "$DICT_FILE" \
     --char_dict "${DATA_PATH}/char_dict.txt" \
     --attention 'no_use' \
-    --rnn_layers_count 2 \
+    --rnn_layers_count 1 \
     --final_layers_count 2
 
   echo "${GCS_PATH}/training_${OUTPUT_ID}"

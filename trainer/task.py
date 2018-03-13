@@ -124,7 +124,7 @@ class Evaluator(object):
 
       with file_io.FileIO(os.path.join(self.output_path,
                                        'wrong_predictions.csv'), 'w') as f:
-        to_run = [self.tensors.ids, self.tensors.labels] + self.tensors.predictions + [self.tensors.username_char_ids, self.tensors.username_chars]
+        to_run = [self.tensors.ids, self.tensors.labels] + self.tensors.predictions
         self.sv.start_queue_runners(session)
         last_log_progress = 0
         results = []
@@ -135,16 +135,11 @@ class Evaluator(object):
             last_log_progress = progress
 
           res = session.run(to_run)
-          ids, labels, predictions, scores, username_char_ids, username_chars = res
+          ids, labels, predictions, scores = res
           y_true = np.append(y_true, labels)
           y_pred = np.append(y_pred, predictions)
 
-          for id, label, prediction, score, char_ids, chars in zip(ids, labels, predictions, scores, username_char_ids, username_chars):
-              #username = ' '.join([x.decode('utf-8') for x in chars]).encode('utf-8')
-              #char_ids = ' '.join(map(str, char_ids))
-              #print(id)
-              #print(char_ids)
-              #print('%s' % username)
+          for id, label, prediction, score in zip(ids, labels, predictions, scores):
               if label != prediction:
                   results.append([id, self.model.id_to_key(label), round(score[label], 2),
                       self.model.id_to_key(prediction), round(score[prediction], 2),
