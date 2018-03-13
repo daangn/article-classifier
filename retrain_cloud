@@ -117,8 +117,8 @@ elif [[ $CMD == 'train' ]] || [[ $CMD == 'train_test' ]]; then
     --char_dict "${DATA_PATH}/char_dict.txt" \
     --attention 'no_use' \
     --rnn_type 'LSTM' \
-    --rnn_layers_count 1 \
-    --final_layers_count 2 \
+    --rnn_layers_count 2 \
+    --final_layers_count 3 \
     --dropout 0.5
 
 elif [[ $CMD == 'write_predict' ]]; then
@@ -143,8 +143,8 @@ elif [[ $CMD == 'write_predict' ]]; then
     --input_dict "$DICT_FILE" \
     --char_dict "${DATA_PATH}/char_dict.txt" \
     --attention 'no_use' \
-    --rnn_layers_count 1 \
-    --final_layers_count 2
+    --rnn_layers_count 2 \
+    --final_layers_count 3
 
   echo "${GCS_PATH}/training_${OUTPUT_ID}"
 

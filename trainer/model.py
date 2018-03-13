@@ -382,9 +382,8 @@ class Model(object):
 
     with tf.name_scope("continuous"):
         blocks = blocks_inline_to_matrix(blocks_inline)
-        continuous_features = tf.concat([price, images_count, recent_articles_count,
-            title_length, content_length], 0)
-        continuous_features = tf.reshape(continuous_features, [-1, 5])
+        continuous_features = tf.stack([price, images_count, recent_articles_count,
+            title_length, content_length], 1)
         continuous_features = tf.concat([continuous_features,
             continuous_features * continuous_features], 1)
         continuous_features = tf.cast(continuous_features, tf.float32)
@@ -577,7 +576,7 @@ class Model(object):
     with tf.Session(graph=tf.Graph()) as sess:
       # Build and save prediction meta graph and trained variable values.
       inputs, outputs = self.build_prediction_graph()
-      init_op = [tf.global_variables_initializer(), tf.tables_initializer()]
+      init_op = tf.global_variables_initializer()
       sess.run(init_op)
       self.restore_from_checkpoint(sess, last_checkpoint)
       signature_def = build_signature(inputs=inputs, outputs=outputs)
@@ -589,8 +588,7 @@ class Model(object):
           sess,
           tags=[tag_constants.SERVING],
           signature_def_map=signature_def_map,
-          # https://stackoverflow.com/questions/44236090/how-to-keep-tensorflow-lookup-tables-initialized-for-prediction-and-not-just-tr
-          legacy_init_op=main_op.main_op())
+          main_op=tf.tables_initializer())
       builder.save()
 
   def format_metric_values(self, metric_values):
