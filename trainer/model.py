@@ -141,8 +141,6 @@ class GraphReferences(object):
     self.input_text_length = None
     self.ids = None
     self.labels = None
-    self.username_char_ids = None # temp
-    self.username_chars = None # temp
 
 def find_nearest_idx(array, value):
     return tf.argmin(tf.abs(
@@ -367,8 +365,6 @@ class Model(object):
                 mapping=tf.constant(self.username_chars),
                 default_value=len(self.username_chars))
         username_char_ids = table.lookup(username_chars)
-        tensors.username_chars = username_chars
-        tensors.username_char_ids = username_char_ids
         username_char_dict_size = len(self.username_chars) + 1 # add unknown char
         x = tf.keras.layers.Embedding(username_char_dict_size, 10)(username_char_ids)
         outputs, last_states = stack_bidirectional_dynamic_rnn(x, [10],
@@ -566,7 +562,6 @@ class Model(object):
         'key': keys,
         'prediction': tensors.predictions[0],
         'scores': tensors.predictions[1],
-        'username_char_ids': tensors.username_char_ids,
     }
 
     return inputs, outputs

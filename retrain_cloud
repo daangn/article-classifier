@@ -119,7 +119,7 @@ elif [[ $CMD == 'train' ]] || [[ $CMD == 'train_test' ]]; then
     --char_dict "${DATA_PATH}/char_dict.txt" \
     --attention 'no_use' \
     --rnn_type 'LSTM' \
-    --rnn_layers_count 2 \
+    --rnn_layers_count 1 \
     --final_layers_count 2 \
     --dropout 0.5
 
