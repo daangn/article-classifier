@@ -144,9 +144,9 @@ class ExtractLabelIdsDoFn(beam.DoFn):
     # that were not in the dictionary.  In this sample, we simply skip it.
     # This code already supports multi-label problems if you want to use it.
     label_ids = []
-    label = row[LABEL_COL]
+    label = row[LABEL_COL].strip()
     try:
-        label_id = self.label_to_id_map[label.strip()]
+        label_id = self.label_to_id_map[label]
         label_ids.append(label_id)
         labels_counters[label_id].inc()
     except IndexError as e:
@@ -228,7 +228,6 @@ class ExtractTextDataDoFn(beam.DoFn):
     except AttributeError:
       item, label_ids, embedding = element
 
-    key = item[1]
     created_at_ts = item[5]
     offerable = item[6]
     text_embedding_inline = item[12]
@@ -262,7 +261,7 @@ class ExtractTextDataDoFn(beam.DoFn):
       length = len(embedding) / WORD_DIM
       if length > max_length:
           length = max_length
-          embedding = embedding[:WORD_DIM * max_length]
+          embedding = embedding[:WORD_DIM * length]
       else:
           embedding += [0.0] * ((max_length - length) * WORD_DIM)
       return embedding, length
