@@ -54,10 +54,10 @@ def down(id, cloud_path=None):
     return 1
 
 def remove_cloud(id):
-    remove(id, gs_emb_path)
+    return remove(id, gs_emb_path)
 
 def down_cloud(id):
-    down(id, gs_emb_path)
+    return down(id, gs_emb_path)
 
 @click.command()
 @click.option('--cloud', is_flag=True, help='sync cloud')
