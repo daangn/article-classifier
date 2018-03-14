@@ -28,6 +28,7 @@ from tensorflow.python.saved_model import utils as saved_model_utils
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.keras.layers import Embedding
 
 import util
 from util import override_if_not_in_args
@@ -366,7 +367,9 @@ class Model(object):
                 default_value=len(self.username_chars))
         username_char_ids = table.lookup(username_chars)
         username_char_dict_size = len(self.username_chars) + 1 # add unknown char
-        x = tf.keras.layers.Embedding(username_char_dict_size, char_dim)(username_char_ids)
+        x = Embedding(username_char_dict_size, char_dim)(username_char_ids)
+        mask = tf.sequence_mask(username_length, MAX_USERNAME_CHARS_COUNT, dtype=tf.float32)
+        x = x * tf.expand_dims(mask, 2)
         outputs, last_states = stack_bidirectional_dynamic_rnn(x, [char_dim],
                 username_length, dropout_keep_prob=dropout_keep_prob, is_training=is_training)
         username = last_states
@@ -374,9 +377,8 @@ class Model(object):
             username = tf.nn.dropout(username, dropout_keep_prob)
 
     with tf.name_scope("category"):
-        category_embeddings = tf.get_variable('table', [TOTAL_CATEGORIES_COUNT, 5])
         category_ids = tf.minimum(category_ids - 1, TOTAL_CATEGORIES_COUNT - 1)
-        category_embeddings = tf.nn.embedding_lookup(category_embeddings, category_ids)
+        category_embeddings = Embedding(TOTAL_CATEGORIES_COUNT, 5)(category_ids)
         if dropout_keep_prob:
             category_embeddings = tf.nn.dropout(category_embeddings, dropout_keep_prob)
 
@@ -384,8 +386,8 @@ class Model(object):
         blocks = blocks_inline_to_matrix(blocks_inline)
         continuous_features = tf.stack([price, images_count, recent_articles_count,
             title_length, content_length], 1)
-        continuous_features = tf.concat([continuous_features,
-            continuous_features * continuous_features], 1)
+        #continuous_features = tf.concat([continuous_features,
+        #    continuous_features * continuous_features], 1)
         continuous_features = tf.cast(continuous_features, tf.float32)
         continuous_features = tf.concat([continuous_features, blocks], 1)
         continuous_features = layers.fully_connected(continuous_features, 10,
