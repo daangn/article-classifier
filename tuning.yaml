@@ -1,14 +1,10 @@
 trainingInput:
-  scaleTier: CUSTOM
-  masterType: complex_model_l
-  workerType: complex_model_m_gpu
-  parameterServerType: large_model
-  workerCount: 9
-  parameterServerCount: 3
+  scaleTier: PREMIUM_1
   hyperparameters:
     goal: MAXIMIZE
+    hyperparameterMetricTag: accuracy
     maxTrials: 30
-    maxParallelTrials: 1
+    maxParallelTrials: 3
     enableTrialEarlyStopping: True
     params:
     - parameterName: rnn_type
