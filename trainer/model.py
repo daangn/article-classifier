@@ -484,28 +484,29 @@ class Model(object):
     loss_updates, loss_op = util.loss(loss_value)
     accuracy_updates, accuracy_op = util.accuracy(logits, labels)
 
-    precisions = []
-    recalls = []
-    for i in range(self.label_count):
-        op, updates = tf.metrics.recall_at_k(labels, logits, 1, class_id=i)
-        recalls.append({'op': op, 'updates': updates})
-        op, updates = tf.metrics.sparse_precision_at_k(labels, logits, 1, class_id=i)
-        precisions.append({'op': op, 'updates': updates})
+    precision = {'ops': [], 'updates': []}
+    recall = {'ops': [], 'updates': []}
+
+    with tf.name_scope('metrics'):
+        for i in range(self.label_count):
+            op, update = tf.metrics.recall_at_k(labels, logits, 1, class_id=i)
+            recall['ops'].append(op)
+            recall['updates'].append(update)
+            op, update = tf.metrics.sparse_precision_at_k(labels, logits, 1, class_id=i)
+            precision['ops'].append(op)
+            precision['updates'].append(update)
 
     if not is_training:
       tf.summary.scalar('accuracy', accuracy_op)
       tf.summary.scalar('loss', loss_op)
       for i in range(self.label_count):
           label_name = self.labels[i]
-          tf.summary.scalar('recall_%s' % label_name, recalls[i]['op'])
-          tf.summary.scalar('precision_%s' % label_name, precisions[i]['op'])
+          tf.summary.scalar('recall_%s' % label_name, recall['ops'][i])
+          tf.summary.scalar('precision_%s' % label_name, precision['ops'][i])
 
-    precision_updates = [x['updates'] for x in precisions]
-    precision_ops = [x['op'] for x in precisions]
-    recall_updates = [x['updates'] for x in recalls]
-    recall_ops = [x['op'] for x in recalls]
-    tensors.metric_updates = loss_updates + accuracy_updates + [recall_updates, precision_updates]
-    tensors.metric_values = [loss_op, accuracy_op, recall_ops, precision_ops]
+    tensors.metric_updates = loss_updates + accuracy_updates + \
+            recall['updates'] + precision['updates']
+    tensors.metric_values = [loss_op, accuracy_op, recall['ops'], precision['ops']]
     return tensors
 
   def build_train_graph(self, data_paths, batch_size):
