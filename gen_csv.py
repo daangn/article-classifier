@@ -6,6 +6,7 @@ from random import shuffle
 from collections import Counter
 
 import numpy as np
+import pandas as pd
 from sklearn.model_selection import StratifiedShuffleSplit
 
 from trainer.emb import LABEL_COL
@@ -27,10 +28,10 @@ CHUNK_SIZE = 10000
 def main():
     with open('data/emb.csv') as f:
         X = f.readlines()[1:]
-    y = [x.split(',')[LABEL_COL].rstrip() for x in X]
-
     X = np.array(X)
-    y = np.array(y)
+
+    df = pd.read_csv('data/emb.csv')
+    y = df['label'].values
 
     print(X)
     print(y)
@@ -38,8 +39,22 @@ def main():
     print('All y counter')
     print(Counter(y).most_common())
 
+    # for splitting users
+    user_labels = df.groupby(['label', 'user_name']).size().reset_index(name='n')
+    user_labels = ['%s_%s' % (label, name) for label, name in user_labels[user_labels.n >= 2][['label', 'user_name']].values]
+    user_labels = set(user_labels)
+
+    y_with_name = []
+    for label, name in df[['label', 'user_name']].values:
+        user_label = '%s_%s' % (label, name)
+        if user_label in user_labels:
+            y_with_name.append(user_label)
+        else:
+            y_with_name.append(label)
+    y_with_name = np.array(y_with_name)
+
     sss = StratifiedShuffleSplit(n_splits=1, test_size=EVAL_RATIO)
-    train_index, test_index = next(sss.split(X, y))
+    train_index, test_index = next(sss.split(X, y_with_name))
 
     print('total count: %d' % X.shape[0])
     K = np.zeros((X.shape[0]), np.int32)
