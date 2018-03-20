@@ -34,7 +34,8 @@ def make_rnn_cells(rnn_layer_sizes,
       cell = tf.contrib.rnn.ResidualWrapper(cell)
     if dropout_keep_prob is not None and dropout_keep_prob < 1.0:
       cell = tf.contrib.rnn.DropoutWrapper(
-          cell, output_keep_prob=dropout_keep_prob)
+          cell, output_keep_prob=dropout_keep_prob, input_keep_prob=dropout_keep_prob,
+          variational_recurrent=True, input_size=num_units, dtype=tf.float32)
     cells.append(cell)
   return cells
 
