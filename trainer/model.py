@@ -35,26 +35,21 @@ from util import override_if_not_in_args
 
 from rnn import stack_bidirectional_dynamic_rnn, simple_rnn, multi_rnn
 
-slim = tf.contrib.slim
-
 LOGITS_TENSOR_NAME = 'logits_tensor'
 LABEL_COLUMN = 'label'
 EMBEDDING_COLUMN = 'embedding'
 
+BLOCKS_COUNT = 72
 TOTAL_CATEGORIES_COUNT = 62
-DAY_TIME = 60.0 * 60 * 24
 
-IMAGE_COUNT_SECTION = [1, 2, 5, 10]
-PRICE_SECTION = [0, 1000, 10000, 30000, 50000, 10*10000, 30*10000, 100*10000, 1000*10000, 10000*10000]
-RECENT_ARTICLES_COUNT_SECTION = [0, 1, 5, 20, 60, 100]
+DAY_TIME = 60.0 * 60 * 24
 
 BOTTLENECK_TENSOR_SIZE = 1536
 WORD_DIM = 50
 MAX_WORDS_LENGTH = 256
-TEXT_EMBEDDING_SIZE = WORD_DIM * MAX_WORDS_LENGTH
-BLOCKS_COUNT = 67
-EXTRA_EMBEDDING_SIZE = 3
 MAX_USERNAME_CHARS_COUNT = 12
+TEXT_EMBEDDING_SIZE = WORD_DIM * MAX_WORDS_LENGTH
+EXTRA_EMBEDDING_SIZE = 3
 
 
 class GraphMod():
@@ -148,10 +143,6 @@ def find_nearest_idx(array, value):
     ), 1)
 
 def get_extra_embeddings(tensors):
-    images_count_section = tf.constant(IMAGE_COUNT_SECTION, dtype=tf.float32)
-    price_section = tf.constant(PRICE_SECTION, dtype=tf.float32)
-    recent_articles_count_section = tf.constant(RECENT_ARTICLES_COUNT_SECTION, dtype=tf.float32)
-
     tensors.input_created_at_ts = tf.placeholder(tf.float64, shape=[None])
     tensors.input_offerable = tf.placeholder(tf.float32, shape=[None])
 
