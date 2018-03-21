@@ -3,7 +3,7 @@ trainingInput:
   hyperparameters:
     goal: MAXIMIZE
     hyperparameterMetricTag: accuracy
-    maxTrials: 30
+    maxTrials: 16
     maxParallelTrials: 3
     enableTrialEarlyStopping: True
     params:
@@ -20,11 +20,11 @@ trainingInput:
     - parameterName: rnn_layers_count
       type: INTEGER
       minValue: 1
-      maxValue: 3
+      maxValue: 2
       scaleType: UNIT_LINEAR_SCALE
     - parameterName: final_layers_count
       type: INTEGER
       minValue: 1
-      maxValue: 5
+      maxValue: 2
       scaleType: UNIT_LINEAR_SCALE
 
