@@ -3,10 +3,17 @@ trainingInput:
   hyperparameters:
     goal: MAXIMIZE
     hyperparameterMetricTag: accuracy
-    maxTrials: 16
+    maxTrials: 30
     maxParallelTrials: 3
     enableTrialEarlyStopping: True
     params:
+    - parameterName: username_type
+      type: CATEGORICAL
+      categoricalValues:
+      - rnn
+      - cnn
+      - dense
+      - none
     - parameterName: rnn_type
       type: CATEGORICAL
       categoricalValues:
@@ -27,4 +34,9 @@ trainingInput:
       minValue: 1
       maxValue: 2
       scaleType: UNIT_LINEAR_SCALE
-
+    - parameterName: max_steps
+      type: DISCRETE
+      discreteValues:
+      - 25000
+      - 35000
+      - 50000

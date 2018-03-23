@@ -31,11 +31,14 @@ def make_rnn_cells(rnn_layer_sizes,
       cell = tf.contrib.rnn.AttentionCellWrapper(
           cell, attn_length, state_is_tuple=True)
     else:
-      cell = tf.contrib.rnn.ResidualWrapper(cell)
+      cell = tf.contrib.rnn.HighwayWrapper(cell)
+      #cell = tf.contrib.rnn.ResidualWrapper(cell)
     if dropout_keep_prob is not None and dropout_keep_prob < 1.0:
       cell = tf.contrib.rnn.DropoutWrapper(
-          cell, output_keep_prob=dropout_keep_prob, input_keep_prob=dropout_keep_prob,
-          variational_recurrent=True, input_size=num_units, dtype=tf.float32)
+          cell, output_keep_prob=dropout_keep_prob,
+          input_keep_prob=dropout_keep_prob,
+          variational_recurrent=True, input_size=num_units,
+          dtype=tf.float32)
     cells.append(cell)
   return cells
 
@@ -96,7 +99,7 @@ def stack_bidirectional_dynamic_rnn(inputs, layer_sizes, sequence_length,
     else:
         initial_states_fw = initial_states_bw = None
 
-    outputs, output_state_fw, output_state_bw = contrib_rnn.stack_bidirectional_dynamic_rnn(
+    outputs, output_state_fw, output_state_bw = tf.contrib.rnn.stack_bidirectional_dynamic_rnn(
       cells_fw, cells_bw, inputs, sequence_length=sequence_length,
       initial_states_fw=initial_states_fw,
       initial_states_bw=initial_states_bw,
