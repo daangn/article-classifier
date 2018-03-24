@@ -31,7 +31,8 @@ def make_rnn_cells(rnn_layer_sizes,
       cell = tf.contrib.rnn.AttentionCellWrapper(
           cell, attn_length, state_is_tuple=True)
     else:
-      cell = tf.contrib.rnn.HighwayWrapper(cell)
+      pass
+      #cell = tf.contrib.rnn.HighwayWrapper(cell)
       #cell = tf.contrib.rnn.ResidualWrapper(cell)
     if dropout_keep_prob is not None and dropout_keep_prob < 1.0:
       cell = tf.contrib.rnn.DropoutWrapper(

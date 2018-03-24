@@ -53,10 +53,11 @@ elif [[ $CMD == 'pre' ]]; then
     --output_path "${GCS_PATH}/preproc/eval" \
     --emb_path "${DATA_PATH}/image_embeddings" \
     --setup_file ./setup.py \
-    --worker_machine_type n1-highcpu-16 \
+    --worker_machine_type n1-highcpu-8 \
     --num_workers 1 \
+    --max_num_workers 40 \
     --cloud &> log/preprocess_eval.log &
-  sleep 20
+  sleep 15
 
   JOB_NAME="preprocess-train-$(date +%Y%m%d-%H%M%S)"
   echo "Job: ${JOB_NAME}"
@@ -68,8 +69,9 @@ elif [[ $CMD == 'pre' ]]; then
     --output_path "${GCS_PATH}/preproc/train" \
     --emb_path "${DATA_PATH}/image_embeddings" \
     --setup_file ./setup.py \
-    --worker_machine_type n1-highcpu-16 \
+    --worker_machine_type n1-highcpu-8 \
     --num_workers 1 \
+    --max_num_workers 50 \
     --cloud
 
 elif [[ $CMD == 'down_pre' ]]; then
@@ -116,6 +118,7 @@ elif [[ $CMD == 'train' ]] || [[ $CMD == 'train_test' ]]; then
     --input_dict "$DICT_FILE" \
     --char_dict "${DATA_PATH}/char_dict.txt" \
     --attention 'no_use' \
+    --username_type 'rnn' \
     --rnn_type 'LSTM' \
     --rnn_layers_count 2 \
     --final_layers_count 1 \
@@ -167,6 +170,7 @@ elif [[ $CMD == 'write_predict' ]]; then
     --input_dict "$DICT_FILE" \
     --char_dict "${DATA_PATH}/char_dict.txt" \
     --attention 'no_use' \
+    --username_type 'rnn' \
     --rnn_type 'LSTM' \
     --rnn_layers_count 2 \
     --final_layers_count 1

@@ -1,5 +1,10 @@
 trainingInput:
-  scaleTier: PREMIUM_1
+  scaleTier: CUSTOM
+  masterType: complex_model_s
+  workerType: complex_model_s
+  workerCount: 28
+  parameterServerType: standard
+  parameterServerCount: 1
   hyperparameters:
     goal: MAXIMIZE
     hyperparameterMetricTag: accuracy

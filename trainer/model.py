@@ -92,7 +92,7 @@ def create_model():
   parser.add_argument('--input_dict', type=str)
   parser.add_argument('--char_dict', type=str)
   parser.add_argument('--attention', type=str, default='no_use')
-  parser.add_argument('--username_type', type=str, default='cnn')
+  parser.add_argument('--username_type', type=str, default='rnn')
   parser.add_argument('--rnn_type', type=str, default='LSTM')
   parser.add_argument('--rnn_layers_count', type=int, default=2)
   parser.add_argument('--final_layers_count', type=int, default=2)
@@ -353,25 +353,27 @@ class Model(object):
 
     dropout_keep_prob = self.dropout if is_training else None
 
+    def dropout(x, keep_prob):
+        if keep_prob:
+            return tf.nn.dropout(x, keep_prob)
+        return x
+
     with tf.variable_scope("username"):
         char_dim = 10
         table = tf.contrib.lookup.index_table_from_tensor(
-                mapping=tf.constant(self.username_chars),
-                default_value=len(self.username_chars))
-        username_char_ids = table.lookup(username_chars)
-        username_char_dict_size = len(self.username_chars) + 1 # add unknown char
-        x = Embedding(username_char_dict_size, char_dim)(username_char_ids)
+                mapping=tf.constant(self.username_chars), default_value=len(self.username_chars))
+        char_ids = table.lookup(username_chars)
+        char_dict_size = len(self.username_chars) + 1 # add unknown char
+        x = Embedding(char_dict_size, char_dim)(char_ids)
         mask = tf.sequence_mask(username_length, MAX_USERNAME_CHARS_COUNT, dtype=tf.float32)
         x = x * tf.expand_dims(mask, 2)
 
         if self.username_type == 'dense':
             username = tf.reshape(x, [-1, MAX_USERNAME_CHARS_COUNT * char_dim])
             username = layers.fully_connected(username, 30)
-            if dropout_keep_prob:
-                username = tf.nn.dropout(username, dropout_keep_prob)
+            username = dropout(username, dropout_keep_prob)
             username = layers.fully_connected(username, 30)
-            if dropout_keep_prob:
-                username = tf.nn.dropout(username, dropout_keep_prob)
+            username = dropout(username, dropout_keep_prob)
         elif self.username_type == 'cnn':
             filters = 5
             k3 = tf.layers.conv1d(x, filters, 3)
@@ -387,12 +389,13 @@ class Model(object):
                     normalizer_params={'is_training': is_training})
         elif self.username_type == 'rnn':
             outputs, last_states = stack_bidirectional_dynamic_rnn(x, [char_dim],
-                    username_length, dropout_keep_prob=dropout_keep_prob, is_training=is_training)
+                    username_length, dropout_keep_prob=dropout_keep_prob,
+                    is_training=is_training)
             username = last_states
-            if dropout_keep_prob:
-                username = tf.nn.dropout(username, dropout_keep_prob)
-        else:
+        elif self.username_type == 'none':
             username = None
+        else:
+            raise Exception('Invaild username_type: %s' % self.username_type)
 
     with tf.name_scope("user"):
         recent_articles_count = tf.minimum(recent_articles_count, 300)
@@ -403,66 +406,54 @@ class Model(object):
         user = tf.concat([recent_articles_count, blocks], 1)
         user = tf.cast(user, tf.float32)
         user = tf.layers.batch_normalization(user, training=is_training)
-        if username is not None:
+        if self.username_type != 'none':
             user = tf.concat([user, username], 1)
-        username = layers.fully_connected(username, 30)
-        if dropout_keep_prob:
-            username = tf.nn.dropout(username, dropout_keep_prob)
+        user = layers.fully_connected(user, 30)
+        user = dropout(user, dropout_keep_prob)
 
     with tf.name_scope("category"):
         category_ids = tf.minimum(category_ids - 1, TOTAL_CATEGORIES_COUNT - 1)
         category_embeddings = Embedding(TOTAL_CATEGORIES_COUNT, 5)(category_ids)
-        if dropout_keep_prob:
-            category_embeddings = tf.nn.dropout(category_embeddings, dropout_keep_prob)
 
     with tf.name_scope("continuous"):
         price = tf.minimum(price, 1000000000)
         title_length = tf.minimum(title_length, 100)
         content_length = tf.minimum(content_length, 3000)
-        continuous_features = tf.stack([price, images_count,
-            title_length, content_length], 1)
-        continuous_features = tf.concat([continuous_features,
-            continuous_features * continuous_features], 1)
+        continuous_features = tf.stack([price, images_count, title_length, content_length], 1)
         continuous_features = tf.cast(continuous_features, tf.float32)
-        continuous_features = tf.layers.batch_normalization(continuous_features,
-                training=is_training)
+        continuous_features = tf.concat([continuous_features, tf.square(continuous_features)], 1)
+        continuous_features = tf.layers.batch_normalization(continuous_features, training=is_training)
 
     with tf.name_scope("image"):
       image_embeddings = layers.fully_connected(image_embeddings, BOTTLENECK_TENSOR_SIZE / 4)
-      if dropout_keep_prob:
-          image_embeddings = tf.nn.dropout(image_embeddings, dropout_keep_prob)
+      image_embeddings = dropout(image_embeddings, dropout_keep_prob)
       image_embeddings = layers.fully_connected(image_embeddings, BOTTLENECK_TENSOR_SIZE / 8)
-      if dropout_keep_prob:
-          image_embeddings = tf.nn.dropout(image_embeddings, dropout_keep_prob)
+      image_embeddings = dropout(image_embeddings, dropout_keep_prob)
 
     with tf.name_scope("extra"):
-        extra_embeddings = tf.layers.batch_normalization(extra_embeddings,
-                training=is_training)
+        extra_embeddings = tf.layers.batch_normalization(extra_embeddings, training=is_training)
 
     with tf.name_scope('bunch'):
-      bunch = tf.concat([image_embeddings, category_embeddings,
-          continuous_features, extra_embeddings, user], 1)
+      bunch = tf.concat([image_embeddings, category_embeddings, continuous_features,
+          extra_embeddings, user], 1)
       bunch = layers.fully_connected(bunch, BOTTLENECK_TENSOR_SIZE / 8)
-      if dropout_keep_prob:
-          bunch = tf.nn.dropout(bunch, dropout_keep_prob)
+      bunch = dropout(bunch, dropout_keep_prob)
 
     with tf.name_scope('text'):
       initial_state = layers.fully_connected(bunch, WORD_DIM * 2)
-      if dropout_keep_prob:
-          initial_state = tf.nn.dropout(initial_state, dropout_keep_prob)
+      initial_state = dropout(initial_state, dropout_keep_prob)
       initial_state = layers.fully_connected(initial_state, WORD_DIM)
-      if dropout_keep_prob:
-          initial_state = tf.nn.dropout(initial_state, dropout_keep_prob)
+      initial_state = dropout(initial_state, dropout_keep_prob)
 
       layer_sizes = [WORD_DIM * (2**i) for i in range(self.rnn_layers_count)]
       text_embeddings = tf.reshape(text_embeddings, [-1, MAX_WORDS_LENGTH, WORD_DIM])
       base_cell = tf.contrib.rnn.BasicLSTMCell if self.rnn_type == 'LSTM' else tf.contrib.rnn.GRUCell
       text_outputs, text_last_states = stack_bidirectional_dynamic_rnn(text_embeddings, layer_sizes,
-              text_lengths, initial_state=(None if self.use_attention else initial_state), base_cell=base_cell,
-              dropout_keep_prob=dropout_keep_prob, is_training=is_training)
+              text_lengths, initial_state=(None if self.use_attention else initial_state),
+              base_cell=base_cell, dropout_keep_prob=dropout_keep_prob, is_training=is_training)
 
       if self.use_attention:
-          with tf.name_scope('mechanism'):
+          with tf.name_scope('attention'):
               attention_mechanism = tf.contrib.seq2seq.LuongAttention(WORD_DIM, text_outputs, text_lengths)
               alignments = attention_mechanism(initial_state, None)
               expanded_alignments = array_ops.expand_dims(alignments, 1)
@@ -475,8 +466,7 @@ class Model(object):
 
     with tf.name_scope('final_ops'):
       softmax, logits = self.add_final_training_ops(
-          hidden,
-          self.label_count,
+          hidden, self.label_count,
           hidden_layer_size=WORD_DIM*2, #BOTTLENECK_TENSOR_SIZE / 8,
           dropout_keep_prob=dropout_keep_prob)
 
