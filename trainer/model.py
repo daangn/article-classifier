@@ -333,6 +333,14 @@ class Model(object):
             return tf.nn.dropout(x, keep_prob)
         return x
 
+    def dense(x, units):
+        for unit in units:
+            x = layers.fully_connected(x, unit, activation_fn=None)
+            x = tf.contrib.layers.maxout(x, unit)
+            x = tf.reshape(x, [-1, unit])
+            x = dropout(x, dropout_keep_prob)
+        return x
+
     with tf.variable_scope("username"):
         table = tf.contrib.lookup.index_table_from_tensor(
                 mapping=tf.constant(self.username_chars),
@@ -345,10 +353,7 @@ class Model(object):
 
         if self.username_type == 'dense':
             username = tf.reshape(x, [-1, MAX_USERNAME_CHARS_COUNT * CHAR_DIM])
-            username = layers.fully_connected(username, 30)
-            username = dropout(username, dropout_keep_prob)
-            username = layers.fully_connected(username, 30)
-            username = dropout(username, dropout_keep_prob)
+            username = dense(username, [30, 30])
         elif self.username_type == 'cnn':
             filters = 5
             k3 = tf.layers.conv1d(x, filters, 3)
@@ -385,8 +390,9 @@ class Model(object):
         user = tf.layers.batch_normalization(user, training=is_training)
         if self.username_type != 'none':
             user = tf.concat([user, username], 1)
-            user = layers.fully_connected(user, 30)
-        user = dropout(user, dropout_keep_prob)
+            user = dense(user, [30])
+        else:
+            user = dropout(user, dropout_keep_prob)
 
     with tf.variable_scope("category"):
         category_ids = tf.minimum(category_ids - 1, TOTAL_CATEGORIES_COUNT - 1)
@@ -409,21 +415,14 @@ class Model(object):
         continuous = dropout(continuous, dropout_keep_prob)
 
     with tf.variable_scope("image"):
-      image_embeddings = layers.fully_connected(image_embeddings, BOTTLENECK_TENSOR_SIZE / 4)
-      image_embeddings = dropout(image_embeddings, dropout_keep_prob)
-      image_embeddings = layers.fully_connected(image_embeddings, BOTTLENECK_TENSOR_SIZE / 8)
-      image_embeddings = dropout(image_embeddings, dropout_keep_prob)
+        image_embeddings = dense(image_embeddings, [384, 192])
 
     with tf.variable_scope('bunch'):
       bunch = tf.concat([image_embeddings, category, continuous, user], 1)
-      bunch = layers.fully_connected(bunch, BOTTLENECK_TENSOR_SIZE / 8)
-      bunch = dropout(bunch, dropout_keep_prob)
+      bunch = dense(bunch, [192])
 
     with tf.variable_scope('text'):
-      initial_state = layers.fully_connected(bunch, WORD_DIM * 2)
-      initial_state = dropout(initial_state, dropout_keep_prob)
-      initial_state = layers.fully_connected(initial_state, WORD_DIM)
-      initial_state = dropout(initial_state, dropout_keep_prob)
+      initial_state = dense(bunch, [WORD_DIM * 2, WORD_DIM])
 
       layer_sizes = [WORD_DIM * (2**i) for i in range(self.rnn_layers_count)]
       text_embeddings = tf.reshape(text_embeddings, [-1, MAX_WORDS_LENGTH, WORD_DIM])
@@ -445,10 +444,7 @@ class Model(object):
           #hidden = tf.concat([bunch, text_last_states], 1)
 
     with tf.variable_scope('final_ops'):
-      hidden_layer_size = WORD_DIM * 2
-      for _ in range(self.final_layers_count):
-          hidden = layers.fully_connected(hidden, hidden_layer_size)
-          hidden = dropout(hidden, dropout_keep_prob)
+      hidden = dense(hidden, [WORD_DIM*2] * self.final_layers_count + [WORD_DIM])
       softmax, logits = self.add_final_training_ops(hidden, self.label_count)
 
     # Prediction is the index of the label with the highest score. We are
