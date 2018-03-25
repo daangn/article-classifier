@@ -9,7 +9,7 @@ trainingInput:
     goal: MAXIMIZE
     hyperparameterMetricTag: accuracy
     maxTrials: 30
-    maxParallelTrials: 3
+    maxParallelTrials: 5
     enableTrialEarlyStopping: True
     params:
     - parameterName: username_type
@@ -19,29 +19,20 @@ trainingInput:
       - cnn
       - dense
       - none
-    - parameterName: rnn_type
+    - parameterName: rnn_cell_wrapper
       type: CATEGORICAL
       categoricalValues:
-      - GRU
-      - LSTM
-    - parameterName: attention
+      - residual
+      - highway
+      - none
+    - parameterName: variational_dropout
       type: CATEGORICAL
       categoricalValues:
       - use
       - no_use
-    - parameterName: rnn_layers_count
-      type: INTEGER
-      minValue: 1
-      maxValue: 2
-      scaleType: UNIT_LINEAR_SCALE
-    - parameterName: final_layers_count
-      type: INTEGER
-      minValue: 1
-      maxValue: 2
-      scaleType: UNIT_LINEAR_SCALE
-    - parameterName: max_steps
-      type: DISCRETE
-      discreteValues:
-      - 25000
-      - 35000
-      - 50000
+    - parameterName: activation
+      type: CATEGORICAL
+      categoricalValues:
+      - relu
+      - maxout
+      - none

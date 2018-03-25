@@ -93,6 +93,9 @@ def create_model():
   parser.add_argument('--char_dict', type=str)
   parser.add_argument('--attention', type=str, default='no_use')
   parser.add_argument('--username_type', type=str, default='rnn')
+  parser.add_argument('--activation', type=str, default='relu')
+  parser.add_argument('--rnn_cell_wrapper', type=str, default='residual')
+  parser.add_argument('--variational_dropout', type=str, default='use')
   parser.add_argument('--rnn_type', type=str, default='LSTM')
   parser.add_argument('--rnn_layers_count', type=int, default=2)
   parser.add_argument('--final_layers_count', type=int, default=1)
@@ -107,7 +110,10 @@ def create_model():
           use_attention=args.attention=='use', rnn_type=args.rnn_type,
           rnn_layers_count=args.rnn_layers_count,
           final_layers_count=args.final_layers_count,
-          char_dict_path=args.char_dict, username_type=args.username_type), task_args
+          char_dict_path=args.char_dict, username_type=args.username_type,
+          rnn_cell_wrapper=args.rnn_cell_wrapper,
+          variational_dropout=args.variational_dropout,
+          activation=args.activation), task_args
 
 
 class GraphReferences(object):
@@ -163,7 +169,8 @@ class Model(object):
 
   def __init__(self, label_count, dropout, labels_path, use_attention=False,
           rnn_type='LSTM', rnn_layers_count=2, final_layers_count=2, char_dict_path=None,
-          username_type=None):
+          rnn_cell_wrapper=None, variational_dropout=None,
+          username_type=None, activation=None):
     self.label_count = label_count
     self.dropout = dropout
     self.labels = file_io.read_file_to_string(labels_path).strip().split('\n')
@@ -172,6 +179,9 @@ class Model(object):
     self.rnn_layers_count = rnn_layers_count
     self.final_layers_count = final_layers_count
     self.username_type = username_type
+    self.activation = activation
+    self.rnn_cell_wrapper = rnn_cell_wrapper
+    self.variational_recurrent = variational_dropout == 'use'
 
     username_chars = file_io.read_file_to_string(char_dict_path).decode('utf-8').strip().split('\n')
     self.username_chars = username_chars
@@ -335,9 +345,16 @@ class Model(object):
 
     def dense(x, units):
         for unit in units:
-            x = layers.fully_connected(x, unit, activation_fn=None)
-            x = tf.contrib.layers.maxout(x, unit)
-            x = tf.reshape(x, [-1, unit])
+            if self.activation == 'maxout':
+                x = layers.fully_connected(x, unit, activation_fn=None)
+                x = tf.contrib.layers.maxout(x, unit)
+                x = tf.reshape(x, [-1, unit])
+            elif self.activation == 'none':
+                x = layers.fully_connected(x, unit,
+                        normalizer_fn=tf.contrib.layers.batch_norm,
+                        normalizer_params={'is_training': is_training})
+            else:
+                x = layers.fully_connected(x, unit)
             x = dropout(x, dropout_keep_prob)
         return x
 
@@ -370,6 +387,8 @@ class Model(object):
         elif self.username_type == 'rnn':
             outputs, last_states = stack_bidirectional_dynamic_rnn(x, [CHAR_DIM],
                     username_length, dropout_keep_prob=dropout_keep_prob,
+                    cell_wrapper=self.rnn_cell_wrapper,
+                    variational_recurrent=self.variational_recurrent,
                     is_training=is_training)
             username = last_states
         elif self.username_type == 'none':
@@ -429,6 +448,7 @@ class Model(object):
       base_cell = tf.contrib.rnn.BasicLSTMCell if self.rnn_type == 'LSTM' else tf.contrib.rnn.GRUCell
       text_outputs, text_last_states = stack_bidirectional_dynamic_rnn(text_embeddings, layer_sizes,
               text_lengths, initial_state=(None if self.use_attention else initial_state),
+              cell_wrapper=self.rnn_cell_wrapper, variational_recurrent=self.variational_recurrent,
               base_cell=base_cell, dropout_keep_prob=dropout_keep_prob, is_training=is_training)
 
       if self.use_attention:

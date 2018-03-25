@@ -110,7 +110,7 @@ elif [[ $CMD == 'train' ]] || [[ $CMD == 'train_test' ]]; then
     --config config.yaml \
     -- \
     --label_count $LABEL_COUNT \
-    --max_steps 35000 \
+    --max_steps 30000 \
     --batch_size 100 \
     --eval_set_size 3000 \
     --output_path "${GCS_PATH}/training_${OUTPUT_ID}" \
@@ -119,7 +119,10 @@ elif [[ $CMD == 'train' ]] || [[ $CMD == 'train_test' ]]; then
     --input_dict "$DICT_FILE" \
     --char_dict "${DATA_PATH}/char_dict.txt" \
     --attention 'no_use' \
-    --username_type 'none' \
+    --activation 'maxout' \
+    --username_type 'cnn' \
+    --variational_dropout 'use' \
+    --rnn_cell_wrapper 'residual' \
     --rnn_type 'LSTM' \
     --rnn_layers_count 2 \
     --final_layers_count 1 \
@@ -139,7 +142,7 @@ elif [[ $CMD == 'tuning' ]]; then
     --config tuning.yaml \
     -- \
     --label_count $LABEL_COUNT \
-    --max_steps 25000 \
+    --max_steps 30000 \
     --batch_size 100 \
     --eval_set_size 3000 \
     --output_path "${GCS_PATH}/training_${OUTPUT_ID}" \

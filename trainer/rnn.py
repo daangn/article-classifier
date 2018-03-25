@@ -10,7 +10,7 @@ from tensorflow.contrib.rnn import GRUCell, MultiRNNCell, ResidualWrapper
 
 def make_rnn_cells(rnn_layer_sizes,
                   dropout_keep_prob=1.0,
-                  attn_length=0,
+                  wrapper=None, variational_recurrent=True,
                   base_cell=tf.contrib.rnn.BasicLSTMCell):
   """Makes a RNN cell from the given hyperparameters.
   Args:
@@ -18,7 +18,6 @@ def make_rnn_cells(rnn_layer_sizes,
         RNN.
     dropout_keep_prob: The float probability to keep the output of any given
         sub-cell.
-    attn_length: The size of the attention vector.
     base_cell: The base tf.contrib.rnn.RNNCell to use for sub-cells.
   Returns:
       A tf.contrib.rnn.MultiRNNCell based on the given hyperparameters.
@@ -26,20 +25,20 @@ def make_rnn_cells(rnn_layer_sizes,
   cells = []
   for num_units in rnn_layer_sizes:
     cell = base_cell(num_units)
-    if attn_length and not cells:
-      # Add attention wrapper to first layer.
-      cell = tf.contrib.rnn.AttentionCellWrapper(
-          cell, attn_length, state_is_tuple=True)
-    else:
-      pass
-      #cell = tf.contrib.rnn.HighwayWrapper(cell)
-      #cell = tf.contrib.rnn.ResidualWrapper(cell)
+    if wrapper == 'highway':
+        cell = tf.contrib.rnn.HighwayWrapper(cell)
+    elif wrapper == 'residual':
+        cell = tf.contrib.rnn.ResidualWrapper(cell)
     if dropout_keep_prob is not None and dropout_keep_prob < 1.0:
-      cell = tf.contrib.rnn.DropoutWrapper(
-          cell, output_keep_prob=dropout_keep_prob,
-          input_keep_prob=dropout_keep_prob,
-          variational_recurrent=True, input_size=num_units,
-          dtype=tf.float32)
+        if variational_recurrent:
+            cell = tf.contrib.rnn.DropoutWrapper(cell,
+                    output_keep_prob=dropout_keep_prob,
+                    input_keep_prob=dropout_keep_prob,
+                    variational_recurrent=True,
+                    input_size=num_units, dtype=tf.float32)
+        else:
+            cell = tf.contrib.rnn.DropoutWrapper(cell,
+                    output_keep_prob=dropout_keep_prob)
     cells.append(cell)
   return cells
 
@@ -76,13 +75,16 @@ def _add_conv_layers(inks, is_training=False, num_conv=[50, 50, 50], conv_len=[5
     return convolved
 
 def stack_bidirectional_dynamic_rnn(inputs, layer_sizes, sequence_length,
-        initial_state=None, attn_length=0, dropout_keep_prob=1.0,
+        initial_state=None, dropout_keep_prob=1.0,
+        cell_wrapper=None, variational_recurrent=True,
         base_cell=tf.contrib.rnn.BasicLSTMCell, is_training=False):
     #inputs = _add_conv_layers(inputs, is_training=is_training, num_conv=[layer_sizes[0]], conv_len=[5], dropout=dropout_keep_prob)
     cells_fw = make_rnn_cells(layer_sizes, dropout_keep_prob=dropout_keep_prob,
-          attn_length=attn_length, base_cell=base_cell)
+          base_cell=base_cell, wrapper=cell_wrapper,
+          variational_recurrent=variational_recurrent)
     cells_bw = make_rnn_cells(layer_sizes, dropout_keep_prob=dropout_keep_prob,
-          attn_length=attn_length, base_cell=base_cell)
+          base_cell=base_cell, wrapper=cell_wrapper,
+          variational_recurrent=variational_recurrent)
 
     if initial_state is not None:
         batch_size = tf.shape(inputs)[0]
