@@ -81,20 +81,15 @@ try:
     from apache_beam.utils.pipeline_options import PipelineOptions
 except ImportError:
   from apache_beam.utils.options import PipelineOptions
-from PIL import Image
 import tensorflow as tf
 import numpy as np
 
-from tensorflow.contrib.slim.python.slim.nets import inception_v3 as inception
 from tensorflow.python.framework import errors
 from tensorflow.python.lib.io import file_io
 
 from trainer.model import BOTTLENECK_TENSOR_SIZE, WORD_DIM, MAX_WORDS_LENGTH, \
         TOTAL_CATEGORIES_COUNT, MAX_USERNAME_CHARS_COUNT
-from trainer.model import get_extra_embeddings, GraphReferences
 from trainer.emb import id_to_path, ID_COL, LABEL_COL, IMAGES_COUNT_COL
-
-slim = tf.contrib.slim
 
 error_count = Metrics.counter('main', 'errorCount')
 missing_label_count = Metrics.counter('main', 'missingLabelCount')
@@ -106,7 +101,7 @@ empty_imgs_count = Metrics.counter('main', 'empty_imgs_count')
 no_texts_count = Metrics.counter('main', 'no_texts_count')
 empty_imgs_count = Metrics.counter('main', 'empty_imgs_count')
 labels_counters = []
-for i in range(30):
+for i in range(11):
     labels_counters.append(Metrics.counter('main', "LabelsCount%d" % i))
 
 
@@ -211,31 +206,13 @@ class ReadImageAndConvertToJpegDoFn(beam.DoFn):
 
 
 class ExtractTextDataDoFn(beam.DoFn):
-  def __init__(self):
-    self.sess = None
-    self.tensors = None
-    self.extra_embeddings = None
-
-  def start_bundle(self, context=None):
-    if not self.sess:
-      self.sess = tf.Session()
-      self.tensors = GraphReferences()
-      self.extra_embeddings = get_extra_embeddings(self.tensors)
-
   def process(self, element):
     try:
       item, label_ids, embedding = element.element
     except AttributeError:
       item, label_ids, embedding = element
 
-    created_at_ts = item[5]
-    offerable = item[6]
     text_embedding_inline = item[12]
-
-    extra_embedding = self.sess.run(self.extra_embeddings, feed_dict={
-          self.tensors.input_offerable: [offerable],
-          self.tensors.input_created_at_ts: [created_at_ts],
-          })[0]
 
     try:
         text_embedding, text_length = self.get_embedding_and_length(text_embedding_inline, MAX_WORDS_LENGTH)
@@ -250,7 +227,6 @@ class ExtractTextDataDoFn(beam.DoFn):
     yield item, label_ids, embedding, {
           'text_embedding': text_embedding,
           'text_length': text_length,
-          'extra_embedding': list(extra_embedding),
           }
 
   def get_embedding_and_length(self, inline, max_length):
@@ -292,6 +268,8 @@ class TFExampleFromImageDoFn(beam.DoFn):
     category_id = int(row[2])
     price = int(row[3])
     images_count = int(row[4])
+    created_at_ts = long(row[5])
+    offerable = int(row[6])
     recent_articles_count = int(row[7])
     blocks_inline = row[8]
     title_length = int(row[9])
@@ -322,7 +300,6 @@ class TFExampleFromImageDoFn(beam.DoFn):
         'embedding': _float_feature(embedding),
         'text_embedding': _float_feature(data['text_embedding']),
         'text_length': _int_feature([data['text_length']]),
-        'extra_embedding': _float_feature(data['extra_embedding']),
         'category_id': _int_feature([category_id]),
         'price': _int_feature([price]),
         'images_count': _int_feature([images_count]),
@@ -332,6 +309,8 @@ class TFExampleFromImageDoFn(beam.DoFn):
         'blocks_inline': _bytes_feature([blocks_inline]),
         'username_chars': _bytes_feature(username_chars),
         'username_length': _int_feature([username_length]),
+        'created_at_ts': _int_feature([created_at_ts]),
+        'offerable': _int_feature([offerable]),
         'label': _int_feature(label_ids),
     }))
 

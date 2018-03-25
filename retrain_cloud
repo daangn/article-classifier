@@ -80,6 +80,7 @@ elif [[ $CMD == 'down_pre' ]]; then
   rm -f "jobs/${JOB_ID}/preproc/train*"
   gsutil -m cp "${GCS_PATH}/preproc/eval*" "jobs/${JOB_ID}/preproc/"
   gsutil -m cp "${GCS_PATH}/preproc/train*" "jobs/${JOB_ID}/preproc/"
+  cp data/job_id_cloud data/job_id
 
 elif [[ $CMD == 'info' ]]; then
   gsutil ls "${GCS_PATH}/preproc/eval*"
@@ -109,7 +110,7 @@ elif [[ $CMD == 'train' ]] || [[ $CMD == 'train_test' ]]; then
     --config config.yaml \
     -- \
     --label_count $LABEL_COUNT \
-    --max_steps 25000 \
+    --max_steps 35000 \
     --batch_size 100 \
     --eval_set_size 3000 \
     --output_path "${GCS_PATH}/training_${OUTPUT_ID}" \
@@ -118,9 +119,9 @@ elif [[ $CMD == 'train' ]] || [[ $CMD == 'train_test' ]]; then
     --input_dict "$DICT_FILE" \
     --char_dict "${DATA_PATH}/char_dict.txt" \
     --attention 'no_use' \
-    --username_type 'rnn' \
-    --rnn_type 'LSTM' \
-    --rnn_layers_count 2 \
+    --username_type 'none' \
+    --rnn_type 'GRU' \
+    --rnn_layers_count 1 \
     --final_layers_count 1 \
     --dropout 0.5
 

@@ -42,14 +42,14 @@ EMBEDDING_COLUMN = 'embedding'
 BLOCKS_COUNT = 72
 TOTAL_CATEGORIES_COUNT = 62
 
-DAY_TIME = 60.0 * 60 * 24
+DAY_TIME = 60 * 60 * 24
 
 BOTTLENECK_TENSOR_SIZE = 1536
+CHAR_DIM = 10
 WORD_DIM = 50
 MAX_WORDS_LENGTH = 256
 MAX_USERNAME_CHARS_COUNT = 12
 TEXT_EMBEDDING_SIZE = WORD_DIM * MAX_WORDS_LENGTH
-EXTRA_EMBEDDING_SIZE = 3
 
 
 class GraphMod():
@@ -95,7 +95,7 @@ def create_model():
   parser.add_argument('--username_type', type=str, default='rnn')
   parser.add_argument('--rnn_type', type=str, default='LSTM')
   parser.add_argument('--rnn_layers_count', type=int, default=2)
-  parser.add_argument('--final_layers_count', type=int, default=2)
+  parser.add_argument('--final_layers_count', type=int, default=1)
   args, task_args = parser.parse_known_args()
   override_if_not_in_args('--max_steps', '1000', task_args)
   override_if_not_in_args('--batch_size', '100', task_args)
@@ -143,21 +143,6 @@ def find_nearest_idx(array, value):
         tf.expand_dims(array, 0) - tf.expand_dims(value, 1)
     ), 1)
 
-def get_extra_embeddings(tensors):
-    tensors.input_created_at_ts = tf.placeholder(tf.float64, shape=[None])
-    tensors.input_offerable = tf.placeholder(tf.float32, shape=[None])
-
-    created_at_ts = tensors.input_created_at_ts
-    offerable = tensors.input_offerable
-
-    created_hour = created_at_ts % DAY_TIME * 1.0 / DAY_TIME
-    created_hour = tf.cast(created_hour, tf.float32)
-    day = tf.cast(created_at_ts / DAY_TIME % 7 / 7.0, tf.float32)
-
-    extra_embeddings = tf.concat([offerable, created_hour, day], 0)
-    extra_embeddings = tf.reshape(extra_embeddings, [-1, EXTRA_EMBEDDING_SIZE])
-    return extra_embeddings
-
 def blocks_inline_to_matrix(inline):
     with tf.variable_scope("blocks"):
         splited_items = tf.string_split(inline, ' ')
@@ -197,11 +182,7 @@ class Model(object):
   def id_to_key(self, id):
       return self.labels[id]
 
-  def add_final_training_ops(self,
-                             hidden,
-                             all_labels_count,
-                             hidden_layer_size=BOTTLENECK_TENSOR_SIZE / 4,
-                             dropout_keep_prob=None):
+  def add_final_training_ops(self, hidden, all_labels_count):
     """Adds a new softmax and fully-connected layer for training.
 
      The set up for the softmax and fully-connected layers is based on:
@@ -212,22 +193,11 @@ class Model(object):
     Args:
       embeddings: The embedding (bottleneck) tensor.
       all_labels_count: The number of all labels including the default label.
-      hidden_layer_size: The size of the hidden_layer. Roughtly, 1/4 of the
-                         bottleneck tensor size.
-      dropout_keep_prob: the percentage of activation values that are retained.
     Returns:
       softmax: The softmax or tensor. It stores the final scores.
       logits: The logits tensor.
     """
-    with tf.name_scope('input'):
-      with tf.name_scope('Wx_plus_b'):
-        for _ in range(self.final_layers_count):
-            hidden = layers.fully_connected(hidden, hidden_layer_size)
-            if dropout_keep_prob:
-                hidden = tf.nn.dropout(hidden, dropout_keep_prob)
-        logits = layers.fully_connected(
-            hidden, all_labels_count, activation_fn=None)
-
+    logits = layers.fully_connected(hidden, all_labels_count, activation_fn=None)
     softmax = tf.nn.softmax(logits, name='softmax')
     return softmax, logits
 
@@ -271,6 +241,8 @@ class Model(object):
       blocks_inline = tf.placeholder(tf.string, shape=[None])
       username_chars = tf.placeholder(tf.string, shape=[None, MAX_USERNAME_CHARS_COUNT])
       username_length = tf.placeholder(tf.int64, shape=[None])
+      created_at_ts = tf.placeholder(tf.int64, shape=[None])
+      offerable = tf.placeholder(tf.int64, shape=[None])
 
       tensors.input_image = inception_input
       tensors.input_text = text_embeddings
@@ -284,8 +256,9 @@ class Model(object):
       tensors.input_blocks_inline = blocks_inline
       tensors.input_username_chars = username_chars
       tensors.input_username_length = username_length
+      tensors.input_created_at_ts = created_at_ts
+      tensors.input_offerable = offerable
 
-      extra_embeddings = get_extra_embeddings(tensors)
       username_chars = tf.reshape(username_chars, [-1, MAX_USERNAME_CHARS_COUNT])
     else:
       # For training and evaluation we assume data is preprocessed, so the
@@ -311,9 +284,6 @@ class Model(object):
                     shape=[TEXT_EMBEDDING_SIZE], dtype=tf.float32),
             'text_length':
                 tf.FixedLenFeature(shape=[], dtype=tf.int64),
-            'extra_embedding':
-                tf.FixedLenFeature(
-                    shape=[EXTRA_EMBEDDING_SIZE], dtype=tf.float32),
             'category_id':
                 tf.FixedLenFeature(shape=[], dtype=tf.int64),
             'price':
@@ -332,6 +302,10 @@ class Model(object):
                 tf.FixedLenFeature(shape=[MAX_USERNAME_CHARS_COUNT], dtype=tf.string),
             'username_length':
                 tf.FixedLenFeature(shape=[], dtype=tf.int64),
+            'created_at_ts':
+                tf.FixedLenFeature(shape=[], dtype=tf.int64),
+            'offerable':
+                tf.FixedLenFeature(shape=[], dtype=tf.int64),
         }
         parsed = tf.parse_example(tensors.examples, features=feature_map)
         labels = tf.squeeze(parsed['label'])
@@ -340,7 +314,6 @@ class Model(object):
         image_embeddings = parsed['embedding']
         text_embeddings = parsed['text_embedding']
         text_lengths = parsed['text_length']
-        extra_embeddings = parsed['extra_embedding']
         category_ids = parsed['category_id']
         price = parsed['price']
         images_count = parsed['images_count']
@@ -350,6 +323,8 @@ class Model(object):
         blocks_inline = parsed['blocks_inline']
         username_chars = parsed['username_chars']
         username_length = parsed['username_length']
+        created_at_ts = parsed['created_at_ts']
+        offerable = parsed['offerable']
 
     dropout_keep_prob = self.dropout if is_training else None
 
@@ -359,17 +334,17 @@ class Model(object):
         return x
 
     with tf.variable_scope("username"):
-        char_dim = 10
         table = tf.contrib.lookup.index_table_from_tensor(
-                mapping=tf.constant(self.username_chars), default_value=len(self.username_chars))
+                mapping=tf.constant(self.username_chars),
+                default_value=len(self.username_chars))
         char_ids = table.lookup(username_chars)
         char_dict_size = len(self.username_chars) + 1 # add unknown char
-        x = Embedding(char_dict_size, char_dim)(char_ids)
+        x = Embedding(char_dict_size, CHAR_DIM)(char_ids)
         mask = tf.sequence_mask(username_length, MAX_USERNAME_CHARS_COUNT, dtype=tf.float32)
         x = x * tf.expand_dims(mask, 2)
 
         if self.username_type == 'dense':
-            username = tf.reshape(x, [-1, MAX_USERNAME_CHARS_COUNT * char_dim])
+            username = tf.reshape(x, [-1, MAX_USERNAME_CHARS_COUNT * CHAR_DIM])
             username = layers.fully_connected(username, 30)
             username = dropout(username, dropout_keep_prob)
             username = layers.fully_connected(username, 30)
@@ -388,7 +363,7 @@ class Model(object):
                     normalizer_fn=tf.contrib.layers.batch_norm,
                     normalizer_params={'is_training': is_training})
         elif self.username_type == 'rnn':
-            outputs, last_states = stack_bidirectional_dynamic_rnn(x, [char_dim],
+            outputs, last_states = stack_bidirectional_dynamic_rnn(x, [CHAR_DIM],
                     username_length, dropout_keep_prob=dropout_keep_prob,
                     is_training=is_training)
             username = last_states
@@ -397,49 +372,54 @@ class Model(object):
         else:
             raise Exception('Invaild username_type: %s' % self.username_type)
 
-    with tf.name_scope("user"):
+    with tf.variable_scope("user"):
         recent_articles_count = tf.minimum(recent_articles_count, 300)
         recent_articles_count = tf.expand_dims(recent_articles_count, 1)
         recent_articles_count = tf.to_int32(recent_articles_count)
         blocks = blocks_inline_to_matrix(blocks_inline)
         blocks = tf.minimum(blocks, 50)
-        user = tf.concat([recent_articles_count, blocks], 1)
+
+        user = tf.concat([recent_articles_count#, blocks
+            ], 1)
         user = tf.cast(user, tf.float32)
         user = tf.layers.batch_normalization(user, training=is_training)
         if self.username_type != 'none':
             user = tf.concat([user, username], 1)
-        user = layers.fully_connected(user, 30)
+            user = layers.fully_connected(user, 30)
         user = dropout(user, dropout_keep_prob)
 
-    with tf.name_scope("category"):
+    with tf.variable_scope("category"):
         category_ids = tf.minimum(category_ids - 1, TOTAL_CATEGORIES_COUNT - 1)
-        category_embeddings = Embedding(TOTAL_CATEGORIES_COUNT, 5)(category_ids)
+        category = Embedding(TOTAL_CATEGORIES_COUNT, 5)(category_ids)
+        category = dropout(category, dropout_keep_prob)
 
-    with tf.name_scope("continuous"):
+    with tf.variable_scope("continuous"):
         price = tf.minimum(price, 1000000000)
         title_length = tf.minimum(title_length, 100)
         content_length = tf.minimum(content_length, 3000)
-        continuous_features = tf.stack([price, images_count, title_length, content_length], 1)
-        continuous_features = tf.cast(continuous_features, tf.float32)
-        continuous_features = tf.concat([continuous_features, tf.square(continuous_features)], 1)
-        continuous_features = tf.layers.batch_normalization(continuous_features, training=is_training)
+        created_time = tf.mod(created_at_ts, DAY_TIME)
+        day = tf.mod(created_at_ts / DAY_TIME, 7)
 
-    with tf.name_scope("image"):
+        continuous = tf.stack([price, images_count, title_length,
+            content_length#, offerable, created_time, day
+            ], 1)
+        continuous = tf.cast(continuous, tf.float32)
+        continuous = tf.concat([continuous, tf.square(continuous)], 1)
+        continuous = tf.layers.batch_normalization(continuous, training=is_training)
+        continuous = dropout(continuous, dropout_keep_prob)
+
+    with tf.variable_scope("image"):
       image_embeddings = layers.fully_connected(image_embeddings, BOTTLENECK_TENSOR_SIZE / 4)
       image_embeddings = dropout(image_embeddings, dropout_keep_prob)
       image_embeddings = layers.fully_connected(image_embeddings, BOTTLENECK_TENSOR_SIZE / 8)
       image_embeddings = dropout(image_embeddings, dropout_keep_prob)
 
-    with tf.name_scope("extra"):
-        extra_embeddings = tf.layers.batch_normalization(extra_embeddings, training=is_training)
-
-    with tf.name_scope('bunch'):
-      bunch = tf.concat([image_embeddings, category_embeddings, continuous_features,
-          extra_embeddings, user], 1)
+    with tf.variable_scope('bunch'):
+      bunch = tf.concat([image_embeddings, category, continuous, user], 1)
       bunch = layers.fully_connected(bunch, BOTTLENECK_TENSOR_SIZE / 8)
       bunch = dropout(bunch, dropout_keep_prob)
 
-    with tf.name_scope('text'):
+    with tf.variable_scope('text'):
       initial_state = layers.fully_connected(bunch, WORD_DIM * 2)
       initial_state = dropout(initial_state, dropout_keep_prob)
       initial_state = layers.fully_connected(initial_state, WORD_DIM)
@@ -464,11 +444,12 @@ class Model(object):
           hidden = text_last_states
           #hidden = tf.concat([bunch, text_last_states], 1)
 
-    with tf.name_scope('final_ops'):
-      softmax, logits = self.add_final_training_ops(
-          hidden, self.label_count,
-          hidden_layer_size=WORD_DIM*2, #BOTTLENECK_TENSOR_SIZE / 8,
-          dropout_keep_prob=dropout_keep_prob)
+    with tf.variable_scope('final_ops'):
+      hidden_layer_size = WORD_DIM * 2
+      for _ in range(self.final_layers_count):
+          hidden = layers.fully_connected(hidden, hidden_layer_size)
+          hidden = dropout(hidden, dropout_keep_prob)
+      softmax, logits = self.add_final_training_ops(hidden, self.label_count)
 
     # Prediction is the index of the label with the highest score. We are
     # interested only in the top score.
