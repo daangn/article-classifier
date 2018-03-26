@@ -47,9 +47,11 @@ DAY_TIME = 60 * 60 * 24
 BOTTLENECK_TENSOR_SIZE = 1536
 CHAR_DIM = 10
 WORD_DIM = 50
-MAX_WORDS_LENGTH = 256
+MAX_TITLE_WORDS_COUNT = 12
+MAX_CONTENT_WORDS_COUNT = 168
 MAX_USERNAME_CHARS_COUNT = 12
-TEXT_EMBEDDING_SIZE = WORD_DIM * MAX_WORDS_LENGTH
+TITLE_EMBEDDING_SIZE = WORD_DIM * MAX_TITLE_WORDS_COUNT
+CONTENT_EMBEDDING_SIZE = WORD_DIM * MAX_CONTENT_WORDS_COUNT
 
 
 class GraphMod():
@@ -128,7 +130,10 @@ class GraphReferences(object):
     self.keys = None
     self.predictions = []
     self.input_image = None
-    self.input_text = None
+    self.input_title = None
+    self.input_title_words_count = None
+    self.input_content = None
+    self.input_content_words_count = None
     self.input_category_id = None
     self.input_price = None
     self.input_images_count = None
@@ -140,7 +145,6 @@ class GraphReferences(object):
     self.input_blocks_inline = None
     self.input_username_chars = None
     self.input_username_length = None
-    self.input_text_length = None
     self.ids = None
     self.labels = None
 
@@ -240,8 +244,10 @@ class Model(object):
       inception_input, inception_embeddings = self.build_inception_graph()
       image_embeddings = inception_embeddings
 
-      text_embeddings = tf.placeholder(tf.float32, shape=[None, TEXT_EMBEDDING_SIZE])
-      text_lengths = tf.placeholder(tf.int64, shape=[None])
+      title_embeddings = tf.placeholder(tf.float32, shape=[None, TITLE_EMBEDDING_SIZE])
+      title_words_count = tf.placeholder(tf.int64, shape=[None])
+      content_embeddings = tf.placeholder(tf.float32, shape=[None, CONTENT_EMBEDDING_SIZE])
+      content_words_count = tf.placeholder(tf.int64, shape=[None])
       category_ids = tf.placeholder(tf.int64, shape=[None])
       price = tf.placeholder(tf.int64, shape=[None])
       images_count = tf.placeholder(tf.int64, shape=[None])
@@ -255,8 +261,10 @@ class Model(object):
       offerable = tf.placeholder(tf.int64, shape=[None])
 
       tensors.input_image = inception_input
-      tensors.input_text = text_embeddings
-      tensors.input_text_length = text_lengths
+      tensors.input_title = title_embeddings
+      tensors.input_title_words_count = title_words_count
+      tensors.input_content = content_embeddings
+      tensors.input_content_words_count = content_words_count
       tensors.input_category_id = category_ids
       tensors.input_price = price
       tensors.input_images_count = images_count
@@ -289,10 +297,15 @@ class Model(object):
             'embedding':
                 tf.FixedLenFeature(
                     shape=[BOTTLENECK_TENSOR_SIZE], dtype=tf.float32),
-            'text_embedding':
+            'title_embedding':
                 tf.FixedLenFeature(
-                    shape=[TEXT_EMBEDDING_SIZE], dtype=tf.float32),
-            'text_length':
+                    shape=[TITLE_EMBEDDING_SIZE], dtype=tf.float32),
+            'title_words_count':
+                tf.FixedLenFeature(shape=[], dtype=tf.int64),
+            'content_embedding':
+                tf.FixedLenFeature(
+                    shape=[CONTENT_EMBEDDING_SIZE], dtype=tf.float32),
+            'content_words_count':
                 tf.FixedLenFeature(shape=[], dtype=tf.int64),
             'category_id':
                 tf.FixedLenFeature(shape=[], dtype=tf.int64),
@@ -322,8 +335,10 @@ class Model(object):
         tensors.labels = labels
         tensors.ids = tf.squeeze(parsed['id'])
         image_embeddings = parsed['embedding']
-        text_embeddings = parsed['text_embedding']
-        text_lengths = parsed['text_length']
+        title_embeddings = parsed['title_embedding']
+        title_words_count = parsed['title_words_count']
+        content_embeddings = parsed['content_embedding']
+        content_words_count = parsed['content_words_count']
         category_ids = parsed['category_id']
         price = parsed['price']
         images_count = parsed['images_count']
@@ -440,27 +455,40 @@ class Model(object):
       bunch = tf.concat([image_embeddings, category, continuous, user], 1)
       bunch = dense(bunch, [192])
 
-    with tf.variable_scope('text'):
+    with tf.variable_scope('title'):
       initial_state = dense(bunch, [WORD_DIM * 2, WORD_DIM])
 
       layer_sizes = [WORD_DIM * (2**i) for i in range(self.rnn_layers_count)]
-      text_embeddings = tf.reshape(text_embeddings, [-1, MAX_WORDS_LENGTH, WORD_DIM])
+      title_embeddings = tf.reshape(title_embeddings, [-1, MAX_TITLE_WORDS_COUNT, WORD_DIM])
       base_cell = tf.contrib.rnn.BasicLSTMCell if self.rnn_type == 'LSTM' else tf.contrib.rnn.GRUCell
-      text_outputs, text_last_states = stack_bidirectional_dynamic_rnn(text_embeddings, layer_sizes,
-              text_lengths, initial_state=(None if self.use_attention else initial_state),
+      title_outputs, title_last_states = stack_bidirectional_dynamic_rnn(title_embeddings, layer_sizes,
+              title_words_count, initial_state=(None if self.use_attention else initial_state),
+              cell_wrapper=self.rnn_cell_wrapper, variational_recurrent=self.variational_recurrent,
+              base_cell=base_cell, dropout_keep_prob=dropout_keep_prob, is_training=is_training)
+      hidden = title_last_states
+
+    with tf.variable_scope('content'):
+      initial_state = dense(title_last_states, [WORD_DIM])
+
+      layer_sizes = [WORD_DIM * (2**i) for i in range(self.rnn_layers_count)]
+      content_embeddings = tf.reshape(content_embeddings, [-1, MAX_CONTENT_WORDS_COUNT, WORD_DIM])
+      base_cell = tf.contrib.rnn.BasicLSTMCell if self.rnn_type == 'LSTM' else tf.contrib.rnn.GRUCell
+      content_outputs, content_last_states = stack_bidirectional_dynamic_rnn(content_embeddings, layer_sizes,
+              content_words_count, initial_state=(None if self.use_attention else initial_state),
               cell_wrapper=self.rnn_cell_wrapper, variational_recurrent=self.variational_recurrent,
               base_cell=base_cell, dropout_keep_prob=dropout_keep_prob, is_training=is_training)
 
       if self.use_attention:
           with tf.name_scope('attention'):
-              attention_mechanism = tf.contrib.seq2seq.LuongAttention(WORD_DIM, text_outputs, text_lengths)
+              attention_mechanism = tf.contrib.seq2seq.LuongAttention(
+                      WORD_DIM, content_outputs, content_words_count)
               alignments = attention_mechanism(initial_state, None)
               expanded_alignments = array_ops.expand_dims(alignments, 1)
               context = math_ops.matmul(expanded_alignments, attention_mechanism.values)
               context = array_ops.squeeze(context, [1])
           hidden = tf.concat([bunch, context], 1)
       else:
-          hidden = text_last_states
+          hidden = content_last_states
           #hidden = tf.concat([bunch, text_last_states], 1)
 
     with tf.variable_scope('final_ops'):
@@ -555,8 +583,10 @@ class Model(object):
     inputs = {
         'key': keys_placeholder,
         'image_embedding_bytes': tensors.input_image,
-        'text_embedding': tensors.input_text,
-        'text_length': tensors.input_text_length,
+        'title_embedding': tensors.input_title,
+        'title_words_count': tensors.input_title_words_count,
+        'content_embedding': tensors.input_content,
+        'content_words_count': tensors.input_content_words_count,
         'category_id': tensors.input_category_id,
         'price': tensors.input_price,
         'images_count': tensors.input_images_count,

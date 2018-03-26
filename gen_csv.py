@@ -72,10 +72,12 @@ def main():
         [set_file_open('eval', i) for i in range(eval_set_size)],
     ]
 
-    with open('data/text_normalized.txt.emb') as f:
+    with open('data/title_normalized.txt.emb') as f:
+        titles = [x.rstrip() for x in f.readlines()]
+    with open('data/content_normalized.txt.emb') as f:
         for i, line in enumerate(f):
             kind = K[i]
-            random.choice(files[kind]).write("%s,%s" % (X[i].rstrip(), line))
+            random.choice(files[kind]).write("%s,%s,%s" % (X[i].rstrip(), titles[i], line))
 
     for kind_files in files:
         for f in kind_files:

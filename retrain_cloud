@@ -21,6 +21,15 @@ LABEL_COUNT=`wc -l < data/article_dict.txt`
 echo
 echo "Using job id: " $JOB_ID
 
+HPARAMS="--attention no_use
+    --activation relu
+    --username_type cnn
+    --variational_dropout no_use
+    --rnn_cell_wrapper residual
+    --rnn_type LSTM
+    --rnn_layers_count 2
+    --final_layers_count 1"
+
 if [[ $CMD == 'gen' ]]; then
   echo "Fetch image embedding files"
   python fetch_image_embeddings.py --cloud
@@ -118,15 +127,8 @@ elif [[ $CMD == 'train' ]] || [[ $CMD == 'train_test' ]]; then
     --train_data_paths "${TRAIN_PATHS}" \
     --input_dict "$DICT_FILE" \
     --char_dict "${DATA_PATH}/char_dict.txt" \
-    --attention 'no_use' \
-    --activation 'maxout' \
-    --username_type 'cnn' \
-    --variational_dropout 'use' \
-    --rnn_cell_wrapper 'residual' \
-    --rnn_type 'LSTM' \
-    --rnn_layers_count 2 \
-    --final_layers_count 1 \
-    --dropout 0.5
+    --dropout 0.5 \
+    $HPARAMS
 
 elif [[ $CMD == 'tuning' ]]; then
   TRAIN_PATHS="${GCS_PATH}/preproc/train*"
@@ -173,11 +175,7 @@ elif [[ $CMD == 'write_predict' ]]; then
     --eval_set_size $DATA_COUNT \
     --input_dict "$DICT_FILE" \
     --char_dict "${DATA_PATH}/char_dict.txt" \
-    --attention 'no_use' \
-    --username_type 'rnn' \
-    --rnn_type 'LSTM' \
-    --rnn_layers_count 2 \
-    --final_layers_count 1
+    $HPARAMS
 
   echo "${GCS_PATH}/training_${OUTPUT_ID}"
 

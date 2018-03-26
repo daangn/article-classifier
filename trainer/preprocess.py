@@ -87,7 +87,8 @@ import numpy as np
 from tensorflow.python.framework import errors
 from tensorflow.python.lib.io import file_io
 
-from trainer.model import BOTTLENECK_TENSOR_SIZE, WORD_DIM, MAX_WORDS_LENGTH, \
+from trainer.model import BOTTLENECK_TENSOR_SIZE, WORD_DIM, \
+        MAX_TITLE_WORDS_COUNT, MAX_CONTENT_WORDS_COUNT, \
         TOTAL_CATEGORIES_COUNT, MAX_USERNAME_CHARS_COUNT
 from trainer.emb import id_to_path, ID_COL, LABEL_COL, IMAGES_COUNT_COL
 
@@ -100,6 +101,8 @@ unknown_label = Metrics.counter('main', 'unknown_label')
 empty_imgs_count = Metrics.counter('main', 'empty_imgs_count')
 no_texts_count = Metrics.counter('main', 'no_texts_count')
 empty_imgs_count = Metrics.counter('main', 'empty_imgs_count')
+title_trunc_count = Metrics.counter('main', 'title truncated count')
+content_trunc_count = Metrics.counter('main', 'content truncated count')
 labels_counters = []
 for i in range(11):
     labels_counters.append(Metrics.counter('main', "LabelsCount%d" % i))
@@ -212,30 +215,41 @@ class ExtractTextDataDoFn(beam.DoFn):
     except AttributeError:
       item, label_ids, embedding = element
 
-    text_embedding_inline = item[12]
+    title_embedding_inline = item[12]
+    content_embedding_inline = item[13]
 
     try:
-        text_embedding, text_length = self.get_embedding_and_length(text_embedding_inline, MAX_WORDS_LENGTH)
-        if text_length < 1:
+        title_embedding, title_length = self.get_embedding_and_length(
+                title_embedding_inline, MAX_TITLE_WORDS_COUNT,
+                trunc_counter=title_trunc_count)
+        content_embedding, content_length = self.get_embedding_and_length(
+                content_embedding_inline, MAX_CONTENT_WORDS_COUNT,
+                trunc_counter=content_trunc_count)
+        if title_length < 1 or content_length < 1:
             no_texts_count.inc()
-            logging.error('no text: %s', text_embedding_inline)
+            logging.error('no text: %s, %s', text_embedding_inline, title_embedding_inline)
     except Exception as e:
         error_count.inc()
-        logging.error(text_embedding_inline)
+        logging.error(title_embedding_inline)
+        logging.error(content_embedding_inline)
         raise e
 
     yield item, label_ids, embedding, {
-          'text_embedding': text_embedding,
-          'text_length': text_length,
+          'title_embedding': title_embedding,
+          'title_length': title_length,
+          'content_embedding': content_embedding,
+          'content_length': content_length,
           }
 
-  def get_embedding_and_length(self, inline, max_length):
+  def get_embedding_and_length(self, inline, max_length, trunc_counter=None):
       if inline == '':
           embedding = []
       else:
           embedding = [float(x) for x in inline.split()]
       length = len(embedding) / WORD_DIM
       if length > max_length:
+          if trunc_counter is not None:
+              trunc_counter.inc()
           length = max_length
           embedding = embedding[:WORD_DIM * length]
       else:
@@ -298,8 +312,10 @@ class TFExampleFromImageDoFn(beam.DoFn):
     example = tf.train.Example(features=tf.train.Features(feature={
         'id': _bytes_feature([id]),
         'embedding': _float_feature(embedding),
-        'text_embedding': _float_feature(data['text_embedding']),
-        'text_length': _int_feature([data['text_length']]),
+        'title_embedding': _float_feature(data['title_embedding']),
+        'title_words_count': _int_feature([data['title_length']]),
+        'content_embedding': _float_feature(data['content_embedding']),
+        'content_words_count': _int_feature([data['content_length']]),
         'category_id': _int_feature([category_id]),
         'price': _int_feature([price]),
         'images_count': _int_feature([images_count]),
