@@ -430,7 +430,7 @@ class Model(object):
 
     with tf.variable_scope("category"):
         category_ids = tf.minimum(category_ids - 1, TOTAL_CATEGORIES_COUNT - 1)
-        category = Embedding(TOTAL_CATEGORIES_COUNT, 5)(category_ids)
+        category = Embedding(TOTAL_CATEGORIES_COUNT, 10)(category_ids)
         category = dropout(category, dropout_keep_prob)
 
     with tf.variable_scope("continuous"):
@@ -453,19 +453,17 @@ class Model(object):
 
     with tf.variable_scope('bunch'):
       bunch = tf.concat([image_embeddings, category, continuous, user], 1)
-      bunch = dense(bunch, [192])
+      bunch = dense(bunch, [192, 100, WORD_DIM])
 
     with tf.variable_scope('title'):
-      initial_state = dense(bunch, [WORD_DIM * 2, WORD_DIM])
-
-      layer_sizes = [WORD_DIM * (2**i) for i in range(self.rnn_layers_count)]
+      layer_sizes = [WORD_DIM]
       title_embeddings = tf.reshape(title_embeddings, [-1, MAX_TITLE_WORDS_COUNT, WORD_DIM])
       base_cell = tf.contrib.rnn.BasicLSTMCell if self.rnn_type == 'LSTM' else tf.contrib.rnn.GRUCell
       title_outputs, title_last_states = stack_bidirectional_dynamic_rnn(title_embeddings, layer_sizes,
-              title_words_count, initial_state=(None if self.use_attention else initial_state),
+              title_words_count, initial_state=bunch,
               cell_wrapper=self.rnn_cell_wrapper, variational_recurrent=self.variational_recurrent,
               base_cell=base_cell, dropout_keep_prob=dropout_keep_prob, is_training=is_training)
-      hidden = title_last_states
+      title = tf.reduce_sum(title_outputs, 1) / tf.expand_dims(tf.to_float(title_words_count), 1)
 
     with tf.variable_scope('content'):
       initial_state = dense(title_last_states, [WORD_DIM])
@@ -474,25 +472,13 @@ class Model(object):
       content_embeddings = tf.reshape(content_embeddings, [-1, MAX_CONTENT_WORDS_COUNT, WORD_DIM])
       base_cell = tf.contrib.rnn.BasicLSTMCell if self.rnn_type == 'LSTM' else tf.contrib.rnn.GRUCell
       content_outputs, content_last_states = stack_bidirectional_dynamic_rnn(content_embeddings, layer_sizes,
-              content_words_count, initial_state=(None if self.use_attention else initial_state),
+              content_words_count, initial_state=initial_state,
               cell_wrapper=self.rnn_cell_wrapper, variational_recurrent=self.variational_recurrent,
               base_cell=base_cell, dropout_keep_prob=dropout_keep_prob, is_training=is_training)
 
-      if self.use_attention:
-          with tf.name_scope('attention'):
-              attention_mechanism = tf.contrib.seq2seq.LuongAttention(
-                      WORD_DIM, content_outputs, content_words_count)
-              alignments = attention_mechanism(initial_state, None)
-              expanded_alignments = array_ops.expand_dims(alignments, 1)
-              context = math_ops.matmul(expanded_alignments, attention_mechanism.values)
-              context = array_ops.squeeze(context, [1])
-          hidden = tf.concat([bunch, context], 1)
-      else:
-          hidden = content_last_states
-          #hidden = tf.concat([bunch, text_last_states], 1)
-
     with tf.variable_scope('final_ops'):
-      hidden = dense(hidden, [WORD_DIM*2] * self.final_layers_count + [WORD_DIM])
+      hidden = tf.concat([image_embeddings, category, continuous, user, title, content_last_states], 1)
+      hidden = dense(hidden, [192] + [WORD_DIM*2] * self.final_layers_count + [WORD_DIM])
       softmax, logits = self.add_final_training_ops(hidden, self.label_count)
 
     # Prediction is the index of the label with the highest score. We are

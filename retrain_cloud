@@ -25,7 +25,7 @@ HPARAMS="--attention no_use
     --activation relu
     --username_type cnn
     --variational_dropout no_use
-    --rnn_cell_wrapper residual
+    --rnn_cell_wrapper highway
     --rnn_type LSTM
     --rnn_layers_count 2
     --final_layers_count 1"

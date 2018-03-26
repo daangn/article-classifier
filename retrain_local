@@ -77,10 +77,10 @@ elif [[ $CMD == 'train' ]] || [[ $CMD == 'train_test' ]]; then
     --train_data_paths "${TRAIN_PATHS}" \
     --input_dict "$DICT_FILE" \
     --char_dict "${DATA_PATH}/char_dict.txt" \
-    --attention 'no_use' \
+    --attention 'use' \
     --username_type 'rnn' \
-    --activation 'none' \
-    --variational_dropout 'use' \
+    --activation 'relu' \
+    --variational_dropout 'no_use' \
     --rnn_cell_wrapper 'residual' \
     --rnn_type 'LSTM' \
     --rnn_layers_count 2 \
