@@ -47,11 +47,15 @@ DAY_TIME = 60 * 60 * 24
 BOTTLENECK_TENSOR_SIZE = 1536
 CHAR_DIM = 10
 WORD_DIM = 50
-MAX_TITLE_WORDS_COUNT = 12
-MAX_CONTENT_WORDS_COUNT = 168
-MAX_USERNAME_CHARS_COUNT = 12
-TITLE_EMBEDDING_SIZE = WORD_DIM * MAX_TITLE_WORDS_COUNT
-CONTENT_EMBEDDING_SIZE = WORD_DIM * MAX_CONTENT_WORDS_COUNT
+CHAR_WORD_DIM = WORD_DIM + CHAR_DIM*2
+TITLE_WORD_SIZE = 12
+CONTENT_WORD_SIZE = 168
+USERNAME_CHAR_SIZE = 12
+WORD_CHAR_SIZE = 14
+TITLE_EMBEDDING_SIZE = WORD_DIM * TITLE_WORD_SIZE
+CONTENT_EMBEDDING_SIZE = WORD_DIM * CONTENT_WORD_SIZE
+TITLE_WORD_CHARS_SIZE = TITLE_WORD_SIZE * WORD_CHAR_SIZE
+CONTENT_WORD_CHARS_SIZE = CONTENT_WORD_SIZE * WORD_CHAR_SIZE
 
 
 class GraphMod():
@@ -93,6 +97,7 @@ def create_model():
   parser.add_argument('--dropout', type=float, default=0.5)
   parser.add_argument('--input_dict', type=str)
   parser.add_argument('--char_dict', type=str)
+  parser.add_argument('--text_char_dict', type=str)
   parser.add_argument('--attention', type=str, default='no_use')
   parser.add_argument('--username_type', type=str, default='rnn')
   parser.add_argument('--activation', type=str, default='relu')
@@ -112,7 +117,9 @@ def create_model():
           use_attention=args.attention=='use', rnn_type=args.rnn_type,
           rnn_layers_count=args.rnn_layers_count,
           final_layers_count=args.final_layers_count,
-          char_dict_path=args.char_dict, username_type=args.username_type,
+          char_dict_path=args.char_dict,
+          text_char_dict_path=args.text_char_dict,
+          username_type=args.username_type,
           rnn_cell_wrapper=args.rnn_cell_wrapper,
           variational_dropout=args.variational_dropout,
           activation=args.activation), task_args
@@ -172,7 +179,8 @@ class Model(object):
   """TensorFlow model for the flowers problem."""
 
   def __init__(self, label_count, dropout, labels_path, use_attention=False,
-          rnn_type='LSTM', rnn_layers_count=2, final_layers_count=2, char_dict_path=None,
+          rnn_type='LSTM', rnn_layers_count=2, final_layers_count=2,
+          char_dict_path=None, text_char_dict_path=None,
           rnn_cell_wrapper=None, variational_dropout=None,
           username_type=None, activation=None):
     self.label_count = label_count
@@ -187,8 +195,8 @@ class Model(object):
     self.rnn_cell_wrapper = rnn_cell_wrapper
     self.variational_recurrent = variational_dropout == 'use'
 
-    username_chars = file_io.read_file_to_string(char_dict_path).decode('utf-8').strip().split('\n')
-    self.username_chars = username_chars
+    self.username_chars = file_io.read_file_to_string(char_dict_path).decode('utf-8').strip().split('\n')
+    self.text_chars = file_io.read_file_to_string(text_char_dict_path).decode('utf-8').strip().split('\n')
 
   def get_labels(self):
       return self.labels
@@ -248,6 +256,12 @@ class Model(object):
       title_words_count = tf.placeholder(tf.int64, shape=[None])
       content_embeddings = tf.placeholder(tf.float32, shape=[None, CONTENT_EMBEDDING_SIZE])
       content_words_count = tf.placeholder(tf.int64, shape=[None])
+
+      title_word_chars = tf.placeholder(tf.string, shape=[None, TITLE_WORD_CHARS_SIZE])
+      content_word_chars = tf.placeholder(tf.string, shape=[None, CONTENT_WORD_CHARS_SIZE])
+      title_word_char_lengths = tf.placeholder(tf.int64, shape=[None, TITLE_WORD_SIZE])
+      content_word_char_lengths = tf.placeholder(tf.int64, shape=[None, CONTENT_WORD_SIZE])
+
       category_ids = tf.placeholder(tf.int64, shape=[None])
       price = tf.placeholder(tf.int64, shape=[None])
       images_count = tf.placeholder(tf.int64, shape=[None])
@@ -255,7 +269,7 @@ class Model(object):
       title_length = tf.placeholder(tf.int64, shape=[None])
       content_length = tf.placeholder(tf.int64, shape=[None])
       blocks_inline = tf.placeholder(tf.string, shape=[None])
-      username_chars = tf.placeholder(tf.string, shape=[None, MAX_USERNAME_CHARS_COUNT])
+      username_chars = tf.placeholder(tf.string, shape=[None, USERNAME_CHAR_SIZE])
       username_length = tf.placeholder(tf.int64, shape=[None])
       created_at_ts = tf.placeholder(tf.int64, shape=[None])
       offerable = tf.placeholder(tf.int64, shape=[None])
@@ -276,8 +290,12 @@ class Model(object):
       tensors.input_username_length = username_length
       tensors.input_created_at_ts = created_at_ts
       tensors.input_offerable = offerable
+      tensors.input_title_word_chars = title_word_chars
+      tensors.input_content_word_chars = content_word_chars
+      tensors.input_title_word_char_lengths = title_word_char_lengths
+      tensors.input_content_word_char_lengths = content_word_char_lengths
 
-      username_chars = tf.reshape(username_chars, [-1, MAX_USERNAME_CHARS_COUNT])
+      username_chars = tf.reshape(username_chars, [-1, USERNAME_CHAR_SIZE])
     else:
       # For training and evaluation we assume data is preprocessed, so the
       # inputs are tf-examples.
@@ -322,13 +340,21 @@ class Model(object):
             'blocks_inline':
                 tf.FixedLenFeature(shape=[], dtype=tf.string),
             'username_chars':
-                tf.FixedLenFeature(shape=[MAX_USERNAME_CHARS_COUNT], dtype=tf.string),
+                tf.FixedLenFeature(shape=[USERNAME_CHAR_SIZE], dtype=tf.string),
             'username_length':
                 tf.FixedLenFeature(shape=[], dtype=tf.int64),
             'created_at_ts':
                 tf.FixedLenFeature(shape=[], dtype=tf.int64),
             'offerable':
                 tf.FixedLenFeature(shape=[], dtype=tf.int64),
+            'title_word_chars':
+                tf.FixedLenFeature(shape=[TITLE_WORD_CHARS_SIZE], dtype=tf.string),
+            'content_word_chars':
+                tf.FixedLenFeature(shape=[CONTENT_WORD_CHARS_SIZE], dtype=tf.string),
+            'title_word_char_lengths':
+                tf.FixedLenFeature(shape=[TITLE_WORD_SIZE], dtype=tf.int64),
+            'content_word_char_lengths':
+                tf.FixedLenFeature(shape=[CONTENT_WORD_SIZE], dtype=tf.int64),
         }
         parsed = tf.parse_example(tensors.examples, features=feature_map)
         labels = tf.squeeze(parsed['label'])
@@ -350,8 +376,13 @@ class Model(object):
         username_length = parsed['username_length']
         created_at_ts = parsed['created_at_ts']
         offerable = parsed['offerable']
+        title_word_chars = parsed['title_word_chars']
+        content_word_chars = parsed['content_word_chars']
+        title_word_char_lengths = parsed['title_word_char_lengths']
+        content_word_char_lengths = parsed['content_word_char_lengths']
 
     dropout_keep_prob = self.dropout if is_training else None
+    base_cell = tf.contrib.rnn.BasicLSTMCell if self.rnn_type == 'LSTM' else tf.contrib.rnn.GRUCell
 
     def dropout(x, keep_prob):
         if keep_prob:
@@ -373,6 +404,34 @@ class Model(object):
             x = dropout(x, dropout_keep_prob)
         return x
 
+    def get_word_chars(table, char_embedding, word_chars, char_lengths, word_size):
+        word_chars = tf.reshape(word_chars, [-1, word_size, WORD_CHAR_SIZE])
+        char_ids = table.lookup(word_chars)
+        x = char_embedding(char_ids)
+        mask = tf.sequence_mask(char_lengths, WORD_CHAR_SIZE, dtype=tf.float32)
+        mask = tf.expand_dims(mask, 3)
+        x = x * mask
+        x = tf.reshape(x, [-1, WORD_CHAR_SIZE, CHAR_DIM])
+        length = tf.reshape(char_lengths, [-1])
+        outputs, last_states = stack_bidirectional_dynamic_rnn(x, [CHAR_DIM],
+                length, dropout_keep_prob=dropout_keep_prob,
+                cell_wrapper=self.rnn_cell_wrapper,
+                variational_recurrent=self.variational_recurrent,
+                base_cell=base_cell,
+                is_training=is_training)
+        return tf.reshape(last_states, [-1, word_size, CHAR_DIM*2])
+
+    with tf.variable_scope("word_chars", reuse=tf.AUTO_REUSE):
+        table = tf.contrib.lookup.index_table_from_tensor(
+                mapping=tf.constant(self.text_chars),
+                default_value=len(self.text_chars))
+        char_dict_size = len(self.text_chars) + 1 # add unknown char
+        char_embedding = Embedding(char_dict_size, CHAR_DIM)
+        title_word_chars = get_word_chars(table, char_embedding,
+                title_word_chars, title_word_char_lengths, TITLE_WORD_SIZE)
+        content_word_chars = get_word_chars(table, char_embedding,
+                content_word_chars, content_word_char_lengths, CONTENT_WORD_SIZE)
+
     with tf.variable_scope("username"):
         table = tf.contrib.lookup.index_table_from_tensor(
                 mapping=tf.constant(self.username_chars),
@@ -380,11 +439,11 @@ class Model(object):
         char_ids = table.lookup(username_chars)
         char_dict_size = len(self.username_chars) + 1 # add unknown char
         x = Embedding(char_dict_size, CHAR_DIM)(char_ids)
-        mask = tf.sequence_mask(username_length, MAX_USERNAME_CHARS_COUNT, dtype=tf.float32)
+        mask = tf.sequence_mask(username_length, USERNAME_CHAR_SIZE, dtype=tf.float32)
         x = x * tf.expand_dims(mask, 2)
 
         if self.username_type == 'dense':
-            username = tf.reshape(x, [-1, MAX_USERNAME_CHARS_COUNT * CHAR_DIM])
+            username = tf.reshape(x, [-1, USERNAME_CHAR_SIZE * CHAR_DIM])
             username = dense(username, [30, 30])
         elif self.username_type == 'cnn':
             filters = 5
@@ -404,6 +463,7 @@ class Model(object):
                     username_length, dropout_keep_prob=dropout_keep_prob,
                     cell_wrapper=self.rnn_cell_wrapper,
                     variational_recurrent=self.variational_recurrent,
+                    base_cell=base_cell,
                     is_training=is_training)
             username = last_states
         elif self.username_type == 'none':
@@ -453,25 +513,25 @@ class Model(object):
 
     with tf.variable_scope('bunch'):
       bunch = tf.concat([image_embeddings, category, continuous, user], 1)
-      bunch = dense(bunch, [192, 100, WORD_DIM])
+      bunch = dense(bunch, [192, 100, CHAR_WORD_DIM])
 
     with tf.variable_scope('title'):
-      layer_sizes = [WORD_DIM]
-      title_embeddings = tf.reshape(title_embeddings, [-1, MAX_TITLE_WORDS_COUNT, WORD_DIM])
-      base_cell = tf.contrib.rnn.BasicLSTMCell if self.rnn_type == 'LSTM' else tf.contrib.rnn.GRUCell
-      title_outputs, title_last_states = stack_bidirectional_dynamic_rnn(title_embeddings, layer_sizes,
+      layer_sizes = [CHAR_WORD_DIM]
+      title_embeddings = tf.reshape(title_embeddings, [-1, TITLE_WORD_SIZE, WORD_DIM])
+      title_words = tf.concat([title_embeddings, title_word_chars], -1)
+      title_outputs, title_last_states = stack_bidirectional_dynamic_rnn(title_words, layer_sizes,
               title_words_count, initial_state=bunch,
               cell_wrapper=self.rnn_cell_wrapper, variational_recurrent=self.variational_recurrent,
               base_cell=base_cell, dropout_keep_prob=dropout_keep_prob, is_training=is_training)
       title = tf.reduce_sum(title_outputs, 1) / tf.expand_dims(tf.to_float(title_words_count), 1)
 
     with tf.variable_scope('content'):
-      initial_state = dense(title_last_states, [WORD_DIM])
+      initial_state = dense(title_last_states, [CHAR_WORD_DIM])
 
-      layer_sizes = [WORD_DIM * (2**i) for i in range(self.rnn_layers_count)]
-      content_embeddings = tf.reshape(content_embeddings, [-1, MAX_CONTENT_WORDS_COUNT, WORD_DIM])
-      base_cell = tf.contrib.rnn.BasicLSTMCell if self.rnn_type == 'LSTM' else tf.contrib.rnn.GRUCell
-      content_outputs, content_last_states = stack_bidirectional_dynamic_rnn(content_embeddings, layer_sizes,
+      layer_sizes = [CHAR_WORD_DIM * (2**i) for i in range(self.rnn_layers_count)]
+      content_embeddings = tf.reshape(content_embeddings, [-1, CONTENT_WORD_SIZE, WORD_DIM])
+      content_words = tf.concat([content_embeddings, content_word_chars], -1)
+      content_outputs, content_last_states = stack_bidirectional_dynamic_rnn(content_words, layer_sizes,
               content_words_count, initial_state=initial_state,
               cell_wrapper=self.rnn_cell_wrapper, variational_recurrent=self.variational_recurrent,
               base_cell=base_cell, dropout_keep_prob=dropout_keep_prob, is_training=is_training)
@@ -584,6 +644,10 @@ class Model(object):
         'blocks_inline': tensors.input_blocks_inline,
         'username_chars': tensors.input_username_chars,
         'username_length': tensors.input_username_length,
+        'title_word_chars': tensors.input_title_word_chars,
+        'title_word_char_lengths': tensors.input_title_word_char_lengths,
+        'content_word_chars': tensors.input_content_word_chars,
+        'content_word_char_lengths': tensors.input_content_word_char_lengths,
     }
 
     # To extract the id, we need to add the identity function.

@@ -44,10 +44,12 @@ if [[ $CMD == 'gen' ]]; then
   gsutil -m rm "${DATA_PATH}/train_set*.csv"
   gsutil -m rm "${DATA_PATH}/article_dict.txt"
   gsutil -m rm "${DATA_PATH}/char_dict.txt"
+  gsutil -m rm "${DATA_PATH}/text_char_dict.txt"
   gsutil -m cp data/eval_set*.csv $DATA_PATH
   gsutil -m cp data/train_set*.csv $DATA_PATH
   gsutil -m cp data/article_dict.txt $DATA_PATH
   gsutil -m cp data/char_dict.txt $DATA_PATH
+  gsutil -m cp data/text_char_dict.txt $DATA_PATH
 
 elif [[ $CMD == 'pre' ]]; then
   echo "data: ${DATA_PATH}"
@@ -119,7 +121,7 @@ elif [[ $CMD == 'train' ]] || [[ $CMD == 'train_test' ]]; then
     --config config.yaml \
     -- \
     --label_count $LABEL_COUNT \
-    --max_steps 30000 \
+    --max_steps 40000 \
     --batch_size 100 \
     --eval_set_size 3000 \
     --output_path "${GCS_PATH}/training_${OUTPUT_ID}" \
@@ -127,6 +129,7 @@ elif [[ $CMD == 'train' ]] || [[ $CMD == 'train_test' ]]; then
     --train_data_paths "${TRAIN_PATHS}" \
     --input_dict "$DICT_FILE" \
     --char_dict "${DATA_PATH}/char_dict.txt" \
+    --text_char_dict "${DATA_PATH}/text_char_dict.txt" \
     --dropout 0.5 \
     $HPARAMS
 
@@ -152,6 +155,7 @@ elif [[ $CMD == 'tuning' ]]; then
     --train_data_paths "${TRAIN_PATHS}" \
     --input_dict "$DICT_FILE" \
     --char_dict "${DATA_PATH}/char_dict.txt" \
+    --text_char_dict "${DATA_PATH}/text_char_dict.txt" \
     --dropout 0.5
 
 elif [[ $CMD == 'write_predict' ]]; then
@@ -175,6 +179,7 @@ elif [[ $CMD == 'write_predict' ]]; then
     --eval_set_size $DATA_COUNT \
     --input_dict "$DICT_FILE" \
     --char_dict "${DATA_PATH}/char_dict.txt" \
+    --text_char_dict "${DATA_PATH}/text_char_dict.txt" \
     $HPARAMS
 
   echo "${GCS_PATH}/training_${OUTPUT_ID}"

@@ -88,8 +88,9 @@ from tensorflow.python.framework import errors
 from tensorflow.python.lib.io import file_io
 
 from trainer.model import BOTTLENECK_TENSOR_SIZE, WORD_DIM, \
-        MAX_TITLE_WORDS_COUNT, MAX_CONTENT_WORDS_COUNT, \
-        TOTAL_CATEGORIES_COUNT, MAX_USERNAME_CHARS_COUNT
+        TITLE_WORD_SIZE, CONTENT_WORD_SIZE, \
+        WORD_CHAR_SIZE, \
+        TOTAL_CATEGORIES_COUNT, USERNAME_CHAR_SIZE
 from trainer.emb import id_to_path, ID_COL, LABEL_COL, IMAGES_COUNT_COL
 
 error_count = Metrics.counter('main', 'errorCount')
@@ -219,13 +220,13 @@ class ExtractTextDataDoFn(beam.DoFn):
     content_embedding_inline = item[13]
 
     try:
-        title_embedding, title_length = self.get_embedding_and_length(
-                title_embedding_inline, MAX_TITLE_WORDS_COUNT,
+        title_embedding, title_words_count = self.get_embedding_and_length(
+                title_embedding_inline, TITLE_WORD_SIZE,
                 trunc_counter=title_trunc_count)
-        content_embedding, content_length = self.get_embedding_and_length(
-                content_embedding_inline, MAX_CONTENT_WORDS_COUNT,
+        content_embedding, content_words_count = self.get_embedding_and_length(
+                content_embedding_inline, CONTENT_WORD_SIZE,
                 trunc_counter=content_trunc_count)
-        if title_length < 1 or content_length < 1:
+        if title_words_count < 1 or content_words_count < 1:
             no_texts_count.inc()
             logging.error('no text: %s, %s', text_embedding_inline, title_embedding_inline)
     except Exception as e:
@@ -234,26 +235,46 @@ class ExtractTextDataDoFn(beam.DoFn):
         logging.error(content_embedding_inline)
         raise e
 
+    title_inline = item[14].decode('utf-8')
+    content_inline = item[15].decode('utf-8')
+    title_word_chars, title_word_char_lengths = self.get_word_chars(title_inline, TITLE_WORD_SIZE)
+    content_word_chars, content_word_char_lengths = self.get_word_chars(content_inline, CONTENT_WORD_SIZE)
+
     yield item, label_ids, embedding, {
           'title_embedding': title_embedding,
-          'title_length': title_length,
+          'title_words_count': title_words_count,
           'content_embedding': content_embedding,
-          'content_length': content_length,
+          'content_words_count': content_words_count,
+          'title_word_chars': title_word_chars.flatten(),
+          'title_word_char_lengths': title_word_char_lengths,
+          'content_word_chars': content_word_chars.flatten(),
+          'content_word_char_lengths': content_word_char_lengths,
           }
 
+  def get_word_chars(self, inline, max_words_count):
+      word_chars = np.zeros([max_words_count, WORD_CHAR_SIZE], dtype='<U1')
+      word_char_lengths = np.zeros([max_words_count], dtype=np.int8)
+
+      for i, word in enumerate(inline.split()[:max_words_count]):
+          chars = list(word)[:WORD_CHAR_SIZE]
+          length = len(chars)
+          word_chars[i][:length] = chars
+          word_char_lengths[i] = length
+
+      return word_chars, word_char_lengths
+
   def get_embedding_and_length(self, inline, max_length, trunc_counter=None):
-      if inline == '':
-          embedding = []
-      else:
-          embedding = [float(x) for x in inline.split()]
-      length = len(embedding) / WORD_DIM
+      embedding = np.array([float(x) for x in inline.split()], dtype=np.float32)
+      length = embedding.shape[0] / WORD_DIM
       if length > max_length:
           if trunc_counter is not None:
               trunc_counter.inc()
           length = max_length
-          embedding = embedding[:WORD_DIM * length]
+          embedding = embedding[:length * WORD_DIM]
       else:
-          embedding += [0.0] * ((max_length - length) * WORD_DIM)
+          zero = np.zeros([max_length * WORD_DIM], dtype=np.float32)
+          zero[:length * WORD_DIM] = embedding
+          embedding = zero
       return embedding, length
 
 
@@ -298,24 +319,28 @@ class TFExampleFromImageDoFn(beam.DoFn):
     else:
         embedding = embedding.ravel().tolist()
 
-    username = row[11].decode('utf-8')
+    username = row[11].decode('utf-8')[:USERNAME_CHAR_SIZE]
     username_length = len(username)
     username_chars = list(username)
 
-    if username_length < MAX_USERNAME_CHARS_COUNT:
-        username_chars += [u''] * (MAX_USERNAME_CHARS_COUNT - username_length)
-    elif username_length > MAX_USERNAME_CHARS_COUNT:
-        username_chars = username_chars[0:MAX_USERNAME_CHARS_COUNT]
+    if username_length < USERNAME_CHAR_SIZE:
+        username_chars += [u''] * (USERNAME_CHAR_SIZE - username_length)
 
     username_chars = [x.encode('utf-8') for x in username_chars]
+    title_word_chars = [x.encode('utf-8') for x in data['title_word_chars']]
+    content_word_chars = [x.encode('utf-8') for x in data['content_word_chars']]
 
     example = tf.train.Example(features=tf.train.Features(feature={
         'id': _bytes_feature([id]),
         'embedding': _float_feature(embedding),
         'title_embedding': _float_feature(data['title_embedding']),
-        'title_words_count': _int_feature([data['title_length']]),
+        'title_words_count': _int_feature([data['title_words_count']]),
         'content_embedding': _float_feature(data['content_embedding']),
-        'content_words_count': _int_feature([data['content_length']]),
+        'content_words_count': _int_feature([data['content_words_count']]),
+        'title_word_chars': _bytes_feature(title_word_chars),
+        'title_word_char_lengths': _int_feature(data['title_word_char_lengths']),
+        'content_word_chars': _bytes_feature(content_word_chars),
+        'content_word_char_lengths': _int_feature(data['content_word_char_lengths']),
         'category_id': _int_feature([category_id]),
         'price': _int_feature([price]),
         'images_count': _int_feature([images_count]),

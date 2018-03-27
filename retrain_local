@@ -77,7 +77,8 @@ elif [[ $CMD == 'train' ]] || [[ $CMD == 'train_test' ]]; then
     --train_data_paths "${TRAIN_PATHS}" \
     --input_dict "$DICT_FILE" \
     --char_dict "${DATA_PATH}/char_dict.txt" \
-    --attention 'use' \
+    --text_char_dict "${DATA_PATH}/text_char_dict.txt" \
+    --attention 'no_use' \
     --username_type 'rnn' \
     --activation 'relu' \
     --variational_dropout 'no_use' \
@@ -103,6 +104,7 @@ elif [[ $CMD == 'write_predict' ]]; then
     --eval_set_size $DATA_COUNT \
     --input_dict "$DICT_FILE" \
     --char_dict "${DATA_PATH}/char_dict.txt" \
+    --text_char_dict "${DATA_PATH}/text_char_dict.txt" \
     --attention 'no_use' \
     --rnn_type 'LSTM' \
     --rnn_layers_count 1 \
