@@ -482,11 +482,7 @@ class Model(object):
             ], 1)
         user = tf.cast(user, tf.float32)
         user = tf.layers.batch_normalization(user, training=is_training)
-        if self.username_type != 'none':
-            user = tf.concat([user, username], 1)
-            user = dense(user, [30])
-        else:
-            user = dropout(user, dropout_keep_prob)
+        user = dropout(user, dropout_keep_prob)
 
     with tf.variable_scope("category"):
         category_ids = tf.minimum(category_ids - 1, TOTAL_CATEGORIES_COUNT - 1)
@@ -513,6 +509,8 @@ class Model(object):
 
     with tf.variable_scope('bunch'):
       bunch = tf.concat([image_embeddings, category, continuous, user], 1)
+      if self.username_type != 'none':
+          bunch = tf.concat([bunch, username], 1)
       bunch = dense(bunch, [192, 100, CHAR_WORD_DIM])
 
     with tf.variable_scope('title'):
@@ -538,6 +536,8 @@ class Model(object):
 
     with tf.variable_scope('final_ops'):
       hidden = tf.concat([image_embeddings, category, continuous, user, title, content_last_states], 1)
+      if self.username_type != 'none':
+          hidden = tf.concat([hidden, username], 1)
       hidden = dense(hidden, [192] + [WORD_DIM*2] * self.final_layers_count + [WORD_DIM])
       softmax, logits = self.add_final_training_ops(hidden, self.label_count)
 
