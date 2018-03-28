@@ -79,7 +79,7 @@ elif [[ $CMD == 'train' ]] || [[ $CMD == 'train_test' ]]; then
     --char_dict "${DATA_PATH}/char_dict.txt" \
     --text_char_dict "${DATA_PATH}/text_char_dict.txt" \
     --attention 'no_use' \
-    --username_type 'rnn' \
+    --username_type 'cnn' \
     --activation 'relu' \
     --variational_dropout 'no_use' \
     --rnn_cell_wrapper 'residual' \

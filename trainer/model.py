@@ -448,13 +448,16 @@ class Model(object):
         elif self.username_type == 'cnn':
             filters = 5
             k3 = tf.layers.conv1d(x, filters, 3)
+            k3 = tf.nn.relu(k3)
             k3 = tf.layers.max_pooling1d(k3, 3, 3)
             k2 = tf.layers.conv1d(x, filters, 2)
+            k2 = tf.nn.relu(k2)
             k2 = tf.layers.max_pooling1d(k2, 2, 2)
             k1 = tf.layers.conv1d(x, filters, 1)
-            k1 = tf.layers.max_pooling1d(k1, 2, 2)
+            k1 = tf.nn.relu(k1)
+            k1 = tf.layers.max_pooling1d(k1, 3, 3)
             x = tf.concat([k1, k2, k3], 1)
-            x = tf.reshape(x, [-1, filters * 14])
+            x = tf.reshape(x, [-1, filters * 12])
             username = layers.fully_connected(x, 30,
                     normalizer_fn=tf.contrib.layers.batch_norm,
                     normalizer_params={'is_training': is_training})
