@@ -23,7 +23,7 @@ echo "Using job id: " $JOB_ID
 
 HPARAMS="--attention no_use
     --activation relu
-    --username_type cnn
+    --username_type rnn
     --variational_dropout no_use
     --rnn_cell_wrapper residual
     --rnn_type LSTM

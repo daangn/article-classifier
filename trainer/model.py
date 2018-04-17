@@ -1,3 +1,4 @@
+#-*- coding: utf-8 -*-
 # Copyright 2016 Google Inc. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -45,13 +46,13 @@ TOTAL_CATEGORIES_COUNT = 62
 DAY_TIME = 60 * 60 * 24
 
 BOTTLENECK_TENSOR_SIZE = 1536
-CHAR_DIM = 10
+CHAR_DIM = 16
 WORD_DIM = 50
 CHAR_WORD_DIM = WORD_DIM + CHAR_DIM*2
 TITLE_WORD_SIZE = 12
 CONTENT_WORD_SIZE = 168
 USERNAME_CHAR_SIZE = 12
-WORD_CHAR_SIZE = 14
+WORD_CHAR_SIZE = 14     # 단어의 글자 수
 TITLE_EMBEDDING_SIZE = WORD_DIM * TITLE_WORD_SIZE
 CONTENT_EMBEDDING_SIZE = WORD_DIM * CONTENT_WORD_SIZE
 TITLE_WORD_CHARS_SIZE = TITLE_WORD_SIZE * WORD_CHAR_SIZE
@@ -239,6 +240,7 @@ class Model(object):
     """Builds generic graph for training or eval."""
     tensors = GraphReferences()
     is_training = graph_mod == GraphMod.TRAIN
+    tf.keras.backend.set_learning_phase(1 if is_training else 0)
     if data_paths:
       tensors.keys, tensors.examples = util.read_examples(
           data_paths,
@@ -409,7 +411,7 @@ class Model(object):
         char_ids = table.lookup(word_chars)
         x = char_embedding(char_ids)
         mask = tf.sequence_mask(char_lengths, WORD_CHAR_SIZE, dtype=tf.float32)
-        mask = tf.expand_dims(mask, 3)
+        mask = tf.expand_dims(mask, 3)  # [batch, seq_len, char_dim, 1]
         x = x * mask
         x = tf.reshape(x, [-1, WORD_CHAR_SIZE, CHAR_DIM])
         length = tf.reshape(char_lengths, [-1])
@@ -508,26 +510,26 @@ class Model(object):
         continuous = dropout(continuous, dropout_keep_prob)
 
     with tf.variable_scope("image"):
-        image_embeddings = dense(image_embeddings, [384, 192])
+        image_embeddings = dense(image_embeddings, [256])
 
     with tf.variable_scope('bunch'):
       bunch = tf.concat([image_embeddings, category, continuous, user], 1)
       if self.username_type != 'none':
           bunch = tf.concat([bunch, username], 1)
-      bunch = dense(bunch, [192, 100, CHAR_WORD_DIM])
 
     with tf.variable_scope('title'):
+      initial_state = dense(bunch, [192, CHAR_WORD_DIM])
       layer_sizes = [CHAR_WORD_DIM]
       title_embeddings = tf.reshape(title_embeddings, [-1, TITLE_WORD_SIZE, WORD_DIM])
       title_words = tf.concat([title_embeddings, title_word_chars], -1)
       title_outputs, title_last_states = stack_bidirectional_dynamic_rnn(title_words, layer_sizes,
-              title_words_count, initial_state=bunch,
+              title_words_count, initial_state=initial_state,
               cell_wrapper=self.rnn_cell_wrapper, variational_recurrent=self.variational_recurrent,
               base_cell=base_cell, dropout_keep_prob=dropout_keep_prob, is_training=is_training)
-      title = tf.reduce_sum(title_outputs, 1) / tf.expand_dims(tf.to_float(title_words_count), 1)
 
     with tf.variable_scope('content'):
-      initial_state = dense(title_last_states, [CHAR_WORD_DIM])
+      bunch = tf.concat([bunch, title_last_states], 1)
+      initial_state = dense(bunch, [192, CHAR_WORD_DIM])
 
       layer_sizes = [CHAR_WORD_DIM * (2**i) for i in range(self.rnn_layers_count)]
       content_embeddings = tf.reshape(content_embeddings, [-1, CONTENT_WORD_SIZE, WORD_DIM])
@@ -538,10 +540,8 @@ class Model(object):
               base_cell=base_cell, dropout_keep_prob=dropout_keep_prob, is_training=is_training)
 
     with tf.variable_scope('final_ops'):
-      hidden = tf.concat([image_embeddings, category, continuous, user, title, content_last_states], 1)
-      if self.username_type != 'none':
-          hidden = tf.concat([hidden, username], 1)
-      hidden = dense(hidden, [192] + [WORD_DIM*2] * self.final_layers_count + [WORD_DIM])
+      hidden = tf.concat([bunch, content_last_states], 1)
+      hidden = dense(hidden, [192])
       softmax, logits = self.add_final_training_ops(hidden, self.label_count)
 
     # Prediction is the index of the label with the highest score. We are
