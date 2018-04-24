@@ -7,4 +7,4 @@ docker run --rm -it --volumes-from gcloud-config \
          -v "${RAILS_ROOT}/title_normalized.txt.emb.words":/app/data/title_normalized.txt.emb.words \
          -v "${RAILS_ROOT}/content_normalized.txt.emb.words":/app/data/content_normalized.txt.emb.words \
          --entrypoint /app/retrain_cloud \
-         daangn/cloud-ml:190 $@
+         daangn/cloud-ml:198 $@

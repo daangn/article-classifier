@@ -141,7 +141,7 @@ elif [[ $CMD == 'publish' ]]; then
   gcloud ml-engine versions create "$VERSION_NAME" \
     --model "$MODEL_NAME" \
     --staging-bucket "$BUCKET" \
-    --runtime-version=1.4 \
+    --runtime-version=1.6 \
     --origin "${GCS_PATH}/training/model"
 
 elif [[ $CMD == 'set' ]]; then

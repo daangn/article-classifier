@@ -117,7 +117,7 @@ elif [[ $CMD == 'train' ]] || [[ $CMD == 'train_test' ]]; then
     --package-path trainer \
     --staging-bucket $BUCKET \
     --region us-central1 \
-    --runtime-version=1.4 \
+    --runtime-version=1.6 \
     --config config.yaml \
     -- \
     --label_count $LABEL_COUNT \
@@ -143,7 +143,7 @@ elif [[ $CMD == 'tuning' ]]; then
     --package-path trainer \
     --staging-bucket $BUCKET \
     --region us-central1 \
-    --runtime-version=1.4 \
+    --runtime-version=1.6 \
     --config tuning.yaml \
     -- \
     --label_count $LABEL_COUNT \
@@ -169,7 +169,7 @@ elif [[ $CMD == 'write_predict' ]]; then
     --package-path trainer \
     --staging-bucket $BUCKET \
     --region us-central1 \
-    --runtime-version=1.4 \
+    --runtime-version=1.6 \
     --config write_predict.yaml \
     -- \
     --write_predictions \
@@ -203,7 +203,7 @@ elif [[ $CMD == 'publish' ]]; then
   gcloud ml-engine versions create "$VERSION_NAME" \
     --model "$MODEL_NAME" \
     --staging-bucket "$BUCKET" \
-    --runtime-version=1.4 \
+    --runtime-version=1.6 \
     --origin $ORIGIN
 
 elif [[ $CMD == 'all' ]]; then
