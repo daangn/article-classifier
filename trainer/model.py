@@ -586,12 +586,12 @@ class Model(object):
             precision['updates'].append(update)
 
     if not is_training:
-      tf.summary.scalar('accuracy', accuracy_op)
-      tf.summary.scalar('loss', loss_op)
+      tf.summary.scalar('accuracy', accuracy_op, family='general')
+      tf.summary.scalar('loss', loss_op, family='general')
       for i in range(self.label_count):
           label_name = self.labels[i]
-          tf.summary.scalar('recall_%s' % label_name, recall['ops'][i])
-          tf.summary.scalar('precision_%s' % label_name, precision['ops'][i])
+          tf.summary.scalar('%s' % label_name, recall['ops'][i], family='recall')
+          tf.summary.scalar('%s' % label_name, precision['ops'][i], family='precision')
 
     tensors.metric_updates = loss_updates + accuracy_updates + \
             recall['updates'] + precision['updates']
