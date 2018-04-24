@@ -581,7 +581,7 @@ class Model(object):
             op, update = tf.metrics.recall_at_k(labels, logits, 1, class_id=i)
             recall['ops'].append(op)
             recall['updates'].append(update)
-            op, update = tf.metrics.sparse_precision_at_k(labels, logits, 1, class_id=i)
+            op, update = tf.metrics.precision_at_k(labels, logits, 1, class_id=i)
             precision['ops'].append(op)
             precision['updates'].append(update)
 

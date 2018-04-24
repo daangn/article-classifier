@@ -56,49 +56,28 @@ class Evaluator(object):
     with tf.Graph().as_default() as graph:
       self.tensors = self.model.build_eval_graph(self.eval_data_paths,
                                                  self.eval_batch_size)
-
       self.summary = tf.summary.merge_all()
+      self.summary_writer = tf.summary.FileWriter(self.output_path)
 
-      self.saver = tf.train.Saver()
+      with tf.train.SingularMonitoredSession(checkpoint_dir=self.checkpoint_path) as session:
+        if self.stream:
+          for _ in range(num_eval_batches):
+            session.run(self.tensors.metric_updates)
+        else:
+          if not self.batch_of_examples:
+            for i in range(num_eval_batches):
+              self.batch_of_examples.append(session.run(self.tensors.examples))
 
-    self.summary_writer = tf.summary.FileWriter(self.output_path)
-    self.sv = tf.train.Supervisor(
-        graph=graph,
-        logdir=self.output_path,
-        summary_op=None,
-        global_step=None,
-        saver=self.saver)
-
-    last_checkpoint = tf.train.latest_checkpoint(self.checkpoint_path)
-    with self.sv.managed_session(
-        master='', start_standard_services=False) as session:
-      try:
-        self.sv.saver.restore(session, last_checkpoint)
-      except Exception:
-        print("sleep")
-        time.sleep(1)
-        self.sv.saver.restore(session, last_checkpoint)
-
-      if self.stream:
-        self.sv.start_queue_runners(session)
-        for _ in range(num_eval_batches):
-          session.run(self.tensors.metric_updates)
-      else:
-        if not self.batch_of_examples:
-          self.sv.start_queue_runners(session)
           for i in range(num_eval_batches):
-            self.batch_of_examples.append(session.run(self.tensors.examples))
+            session.run(self.tensors.metric_updates,
+                        {self.tensors.examples: self.batch_of_examples[i]})
 
-        for i in range(num_eval_batches):
-          session.run(self.tensors.metric_updates,
-                      {self.tensors.examples: self.batch_of_examples[i]})
-
-      metric_values = session.run(self.tensors.metric_values)
-      global_step = tf.train.global_step(session, self.tensors.global_step)
-      summary = session.run(self.summary)
-      self.summary_writer.add_summary(summary, global_step)
-      self.summary_writer.flush()
-      return metric_values
+        metric_values = session.run(self.tensors.metric_values)
+        global_step = tf.train.global_step(session, self.tensors.global_step)
+        summary = session.run(self.summary)
+        self.summary_writer.add_summary(summary, global_step)
+        self.summary_writer.flush()
+        return metric_values
 
   def write_predictions(self):
     """Run one round of predictions and write predictions to csv file."""
@@ -106,78 +85,69 @@ class Evaluator(object):
     with tf.Graph().as_default() as graph:
       self.tensors = self.model.build_eval_graph(self.eval_data_paths,
                                                  self.batch_size)
-      self.saver = tf.train.Saver()
-    self.sv = tf.train.Supervisor(
-        graph=graph,
-        logdir=self.output_path,
-        summary_op=None,
-        global_step=None,
-        saver=self.saver)
 
-    import numpy as np
-    y_true = np.array([], dtype=np.int32)
-    y_pred = np.array([], dtype=np.int32)
+      import numpy as np
+      y_true = np.array([], dtype=np.int32)
+      y_pred = np.array([], dtype=np.int32)
 
-    last_checkpoint = tf.train.latest_checkpoint(self.checkpoint_path)
-    with self.sv.managed_session(
-        master='', start_standard_services=False) as session:
-      self.sv.saver.restore(session, last_checkpoint)
+      if not file_io.file_exists(self.output_path):
+          file_io.create_dir(self.output_path)
 
-      with file_io.FileIO(os.path.join(self.output_path,
-                                       'wrong_predictions.csv'), 'w') as f:
-        to_run = [self.tensors.ids, self.tensors.labels] + self.tensors.predictions
-        self.sv.start_queue_runners(session)
-        last_log_progress = 0
-        results = []
-        for i in range(num_eval_batches):
-          progress = i * 100 // num_eval_batches
-          if progress > last_log_progress:
-            logging.info('%3d%% predictions processed', progress)
-            last_log_progress = progress
+      with tf.train.SingularMonitoredSession(checkpoint_dir=self.checkpoint_path) as session:
+        with file_io.FileIO(os.path.join(self.output_path,
+                                         'wrong_predictions.csv'), 'w') as f:
+          to_run = [self.tensors.ids, self.tensors.labels] + self.tensors.predictions
+          last_log_progress = 0
+          results = []
+          for i in range(num_eval_batches):
+            progress = i * 100 // num_eval_batches
+            if progress > last_log_progress:
+              logging.info('%3d%% predictions processed', progress)
+              last_log_progress = progress
 
-          res = session.run(to_run)
-          ids, labels, predictions, scores = res
-          y_true = np.append(y_true, labels)
-          y_pred = np.append(y_pred, predictions)
+            res = session.run(to_run)
+            ids, labels, predictions, scores = res
+            y_true = np.append(y_true, labels)
+            y_pred = np.append(y_pred, predictions)
 
-          for id, label, prediction, score in zip(ids, labels, predictions, scores):
-              if label != prediction:
-                  results.append([id, self.model.id_to_key(label), round(score[label], 2),
-                      self.model.id_to_key(prediction), round(score[prediction], 2),
-                      round(score[label] - score[prediction], 2)])
+            for id, label, prediction, score in zip(ids, labels, predictions, scores):
+                if label != prediction:
+                    results.append([id, self.model.id_to_key(label), round(score[label], 2),
+                        self.model.id_to_key(prediction), round(score[prediction], 2),
+                        round(score[label] - score[prediction], 2)])
 
-        f.write('article_id,label,label_score,predict,predict_score,bad_score\n')
-        for item in sorted(results, key=lambda x: x[-1]):
-            f.write('%s\n' % ','.join(map(str, item)))
-        print(f.name)
+          f.write('article_id,label,label_score,predict,predict_score,bad_score\n')
+          for item in sorted(results, key=lambda x: x[-1]):
+              f.write('%s\n' % ','.join(map(str, item)))
+          print(f.name)
 
-    with file_io.FileIO(os.path.join(self.output_path, 'confusion_matrix.csv'), 'w') as f:
-        from sklearn.metrics import confusion_matrix, classification_report
+      with file_io.FileIO(os.path.join(self.output_path, 'confusion_matrix.csv'), 'w') as f:
+          from sklearn.metrics import confusion_matrix, classification_report
 
-        labels = self.model.get_labels()
-        f.write('# 라벨\예측,%s,Recall\n' % ','.join(labels))
-        m = confusion_matrix(y_true, y_pred)
-        print(m)
+          labels = self.model.get_labels()
+          f.write('# 라벨\예측,%s,Recall\n' % ','.join(labels))
+          m = confusion_matrix(y_true, y_pred)
+          print(m)
 
-        recalls = [float(row[i]) / sum(row) if sum(row) else 0 for i, row in enumerate(m)]
-        precisions = [float(row[i]) / sum(row) if sum(row) else 0 for i, row in enumerate(m.T)]
-        accuracy = 1.0 * sum([row[i] if row[i] else 0 for i, row in enumerate(m)]) / m.sum()
+          recalls = [float(row[i]) / sum(row) if sum(row) else 0 for i, row in enumerate(m)]
+          precisions = [float(row[i]) / sum(row) if sum(row) else 0 for i, row in enumerate(m.T)]
+          accuracy = 1.0 * sum([row[i] if row[i] else 0 for i, row in enumerate(m)]) / m.sum()
 
-        for i, row in enumerate(m):
-            row = map(str, map(int, row))
-            f.write('%s,%s,%.2f\n' % (labels[i], ','.join(row), recalls[i]))
+          for i, row in enumerate(m):
+              row = map(str, map(int, row))
+              f.write('%s,%s,%.2f\n' % (labels[i], ','.join(row), recalls[i]))
 
-        precisions = map(lambda x: round(x, 2), precisions)
-        f.write('Precision,%s,%.2f\n' % (','.join(map(str, precisions)), accuracy))
+          precisions = map(lambda x: round(x, 2), precisions)
+          f.write('Precision,%s,%.2f\n' % (','.join(map(str, precisions)), accuracy))
 
-        print(f.name)
-        print('Accuracy: %.2f' % accuracy)
+          print(f.name)
+          print('Accuracy: %.2f' % accuracy)
 
-    with file_io.FileIO(os.path.join(self.output_path, 'classification_report.txt'), 'w') as f:
-        report = classification_report(y_true, y_pred, target_names=labels)
-        f.write(report)
-        print(f.name)
-        print(report)
+      with file_io.FileIO(os.path.join(self.output_path, 'classification_report.txt'), 'w') as f:
+          report = classification_report(y_true, y_pred, target_names=labels)
+          f.write(report)
+          print(f.name)
+          print(report)
 
 
 class Trainer(object):
@@ -231,84 +201,52 @@ class Trainer(object):
         # Build the training graph.
         self.tensors = self.model.build_train_graph(self.args.train_data_paths,
                                                     self.args.batch_size)
-
-        init_op = tf.global_variables_initializer()
-
-        # Create a saver for writing training checkpoints.
-        self.saver = tf.train.Saver()
-
         self.summary_op = tf.summary.merge_all()
 
-    # Create a "supervisor", which oversees the training process.
-    self.sv = tf.train.Supervisor(
-        graph,
-        is_chief=self.is_master,
-        logdir=self.train_path,
-        init_op=init_op,
-        saver=self.saver,
-        # Write summary_ops by hand.
-        summary_op=None,
-        global_step=self.tensors.global_step,
-        # No saving; we do it manually in order to easily evaluate immediately
-        # afterwards.
-        save_model_secs=0)
+      eval_fn = self.eval
+      class CheckpointSaverListener(tf.train.CheckpointSaverListener):
+          def after_save(self, session, global_step_value):
+              eval_fn(session)
 
-    should_retry = True
-    to_run = [self.tensors.global_step, self.tensors.train]
+      saver_hook = tf.train.CheckpointSaverHook(self.train_path,
+              save_secs=self.eval_interval,
+              listeners=[CheckpointSaverListener()])
+      logging_hook = tf.train.LoggingTensorHook(
+              tensors={'global_step': self.tensors.global_step},
+              every_n_iter=1000)
 
-    while should_retry:
-      try:
-        should_retry = False
-        with self.sv.managed_session(target, config=config) as session:
+      to_run = [self.tensors.global_step, self.tensors.train]
+      hooks=[logging_hook, tf.train.StopAtStepHook(last_step=self.args.max_steps)]
+
+      with tf.train.MonitoredTrainingSession(master=target,
+              is_chief=self.is_master, checkpoint_dir=self.train_path,
+              log_step_count_steps=10,
+              save_checkpoint_secs=None,
+              chief_only_hooks=[saver_hook],
+              hooks=hooks, config=config) as session:
           self.start_time = start_time = time.time()
           self.last_save = self.last_log = 0
           self.global_step = self.last_global_step = 0
           self.local_step = self.last_local_step = 0
           self.last_global_time = self.last_local_time = start_time
 
-          # Loop until the supervisor shuts down or args.max_steps have
-          # completed.
-          max_steps = self.args.max_steps
-          while not self.sv.should_stop() and self.global_step < max_steps:
-            try:
+          while not session.should_stop():
               # Run one step of the model.
               self.global_step = session.run(to_run)[0]
               self.local_step += 1
 
               self.now = time.time()
-              is_time_to_eval = (self.now - self.last_save) > self.eval_interval
               is_time_to_log = (self.now - self.last_log) > log_interval
-              should_eval = self.is_master and is_time_to_eval
               should_log = is_time_to_log or should_eval
 
               if should_log:
                 self.log(session)
 
-              if should_eval:
-                self.eval(session)
-
-            except tf.errors.AbortedError:
-              should_retry = True
-
-          if self.is_master:
-            # Take the final checkpoint and compute the final accuracy.
-            self.eval(session)
-
-            # Export the model for inference.
-            self.model.export(
-                tf.train.latest_checkpoint(self.train_path), self.model_path)
-
-      except tf.errors.AbortedError:
-        should_retry = True
-
-    # Ask for all the services to stop.
-    self.sv.stop()
-
   def log(self, session):
     """Logs training progress."""
-    logging.info('Train [%s/%d], step %d (%.3f sec) %.1f '
-                 'global steps/s, %.1f local steps/s', self.task.type,
-                 self.task.index, self.global_step,
+    logging.info('Train step %d (%.2f sec) %.1f '
+                 'global steps/s, %.1f local steps/s',
+                 self.global_step,
                  (self.now - self.start_time),
                  (self.global_step - self.last_global_step) /
                  (self.now - self.last_global_time),
@@ -322,7 +260,6 @@ class Trainer(object):
   def eval(self, session):
     """Runs evaluation loop."""
     eval_start = time.time()
-    self.saver.save(session, self.sv.save_path, self.tensors.global_step)
     logging.info(
         'Eval, step %d:\n- on train set %s\n-- on eval set %s',
         self.global_step,
@@ -387,13 +324,13 @@ def run(model, argv):
   parser.add_argument(
       '--eval_interval_secs',
       type=float,
-      default=5,
+      default=180,
       help='Minimal interval between calculating evaluation metrics and saving'
       ' evaluation summaries.')
   parser.add_argument(
       '--log_interval_secs',
       type=float,
-      default=5,
+      default=60,
       help='Minimal interval between logging training metrics and saving '
       'training summaries.')
   parser.add_argument(
