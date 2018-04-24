@@ -448,7 +448,7 @@ class Model(object):
             username = tf.reshape(x, [-1, USERNAME_CHAR_SIZE * CHAR_DIM])
             username = dense(username, [30, 30])
         elif self.username_type == 'cnn':
-            filters = 5
+            filters = 10
             k3 = tf.layers.conv1d(x, filters, 3)
             k3 = tf.nn.relu(k3)
             k3 = tf.layers.max_pooling1d(k3, 3, 3)

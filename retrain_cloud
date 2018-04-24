@@ -23,7 +23,7 @@ echo "Using job id: " $JOB_ID
 
 HPARAMS="--attention no_use
     --activation relu
-    --username_type rnn
+    --username_type cnn
     --variational_dropout no_use
     --rnn_cell_wrapper residual
     --rnn_type LSTM
@@ -120,7 +120,7 @@ elif [[ $CMD == 'train' ]] || [[ $CMD == 'train_test' ]]; then
     --config config.yaml \
     -- \
     --label_count $LABEL_COUNT \
-    --max_steps 35000 \
+    --max_steps 17000 \
     --batch_size 100 \
     --eval_set_size 3000 \
     --output_path "${GCS_PATH}/training_${OUTPUT_ID}" \
