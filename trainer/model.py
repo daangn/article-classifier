@@ -450,15 +450,26 @@ class Model(object):
             k3 = tf.layers.conv1d(x, filters, 3)
             k3 = tf.nn.relu(k3)
             k3 = tf.layers.max_pooling1d(k3, 3, 3)
+            k3 = tf.layers.conv1d(k3, filters, 3)
+            k3 = tf.nn.relu(k3)
+
             k2 = tf.layers.conv1d(x, filters, 2)
             k2 = tf.nn.relu(k2)
             k2 = tf.layers.max_pooling1d(k2, 2, 2)
+            k2 = tf.layers.conv1d(k2, filters, 2, strides=2)
+            k2 = tf.nn.relu(k2)
+            k2 = tf.layers.max_pooling1d(k2, 2, 2)
+
             k1 = tf.layers.conv1d(x, filters, 1)
             k1 = tf.nn.relu(k1)
             k1 = tf.layers.max_pooling1d(k1, 3, 3)
-            x = tf.concat([k1, k2, k3], 1)
-            x = tf.reshape(x, [-1, filters * 12])
-            username = layers.fully_connected(x, 30,
+            k1 = tf.layers.conv1d(k1, filters, 2, strides=2)
+            k1 = tf.nn.relu(k1)
+            k1 = tf.layers.max_pooling1d(k1, 2, 2)
+
+            x = tf.concat([k1, k2, k3], 2)
+            x = tf.reshape(x, [-1, filters * 3])
+            username = layers.fully_connected(x, 10,
                     normalizer_fn=tf.contrib.layers.batch_norm,
                     normalizer_params={'is_training': is_training})
         elif self.username_type == 'rnn':
@@ -508,7 +519,7 @@ class Model(object):
         continuous = dropout(continuous, dropout_keep_prob)
 
     with tf.variable_scope("image"):
-        image_embeddings = dense(image_embeddings, [256])
+        image_embeddings = dense(image_embeddings, [192])
 
     with tf.variable_scope('bunch'):
       bunch = tf.concat([image_embeddings, category, continuous, user], 1)
@@ -520,7 +531,7 @@ class Model(object):
       #title_output = transfomer_encoder(title_embeddings, TITLE_WORD_SIZE)
       #title_output = tf.reshape(title_output, [-1, TITLE_WORD_SIZE * WORD_DIM])
 
-      initial_state = dense(bunch, [192, CHAR_WORD_DIM])
+      initial_state = dense(bunch, [CHAR_WORD_DIM])
       layer_sizes = [CHAR_WORD_DIM]
       title_words = tf.concat([title_embeddings, title_word_chars], -1)
       title_outputs, title_last_states = stack_bidirectional_dynamic_rnn(title_words, layer_sizes,
@@ -534,7 +545,7 @@ class Model(object):
       #content_output = tf.reshape(content_output, [-1, CONTENT_WORD_SIZE * WORD_DIM])
 
       bunch = tf.concat([bunch, title_last_states], 1)
-      initial_state = dense(bunch, [192, CHAR_WORD_DIM])
+      initial_state = dense(bunch, [CHAR_WORD_DIM])
 
       layer_sizes = [CHAR_WORD_DIM * (2**i) for i in range(self.rnn_layers_count)]
       content_words = tf.concat([content_embeddings, content_word_chars], -1)

@@ -220,7 +220,6 @@ class Trainer(object):
 
       with tf.train.MonitoredTrainingSession(master=target,
               is_chief=self.is_master, checkpoint_dir=self.train_path,
-              log_step_count_steps=10,
               save_checkpoint_secs=None,
               chief_only_hooks=[saver_hook],
               hooks=hooks, config=config) as session:
@@ -238,8 +237,8 @@ class Trainer(object):
               self.now = time.time()
               is_time_to_log = (self.now - self.last_log) > log_interval
 
-              if is_time_to_log:
-                self.log(session)
+              #if is_time_to_log:
+              #  self.log(session)
 
   def log(self, session):
     """Logs training progress."""
@@ -319,7 +318,7 @@ def run(model, argv):
   parser.add_argument(
       '--log_interval_secs',
       type=float,
-      default=60,
+      default=120,
       help='Minimal interval between logging training metrics and saving '
       'training summaries.')
   parser.add_argument(
