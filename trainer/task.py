@@ -225,7 +225,7 @@ class Trainer(object):
               chief_only_hooks=[saver_hook],
               hooks=hooks, config=config) as session:
           self.start_time = start_time = time.time()
-          self.last_save = self.last_log = 0
+          self.last_log = 0
           self.global_step = self.last_global_step = 0
           self.local_step = self.last_local_step = 0
           self.last_global_time = self.last_local_time = start_time
@@ -259,23 +259,13 @@ class Trainer(object):
   def eval(self, session):
     """Runs evaluation loop."""
     eval_start = time.time()
-    logging.info(
-        'Eval, step %d:\n- on train set %s\n-- on eval set %s',
-        self.global_step,
-        self.model.format_metric_values(self.train_evaluator.evaluate()),
-        self.model.format_metric_values(self.evaluator.evaluate()))
+    train_val = self.model.format_metric_values(self.train_evaluator.evaluate())
+    eval_val = self.model.format_metric_values(self.evaluator.evaluate())
     now = time.time()
-
-    # Make sure eval doesn't consume too much of total time.
     eval_time = now - eval_start
-    train_eval_rate = self.eval_interval / eval_time
-    if train_eval_rate < self.min_train_eval_rate and self.last_save > 0:
-      logging.info('Adjusting eval interval from %.2fs to %.2fs',
-                   self.eval_interval, self.min_train_eval_rate * eval_time)
-      self.eval_interval = self.min_train_eval_rate * eval_time
-
-    self.last_save = now
-    self.last_log = now
+    logging.info(
+        'Eval, step %d: (%.1fs)\n- on train set %s\n-- on eval set %s',
+        self.global_step, eval_time, train_val, eval_val)
 
   def save_summaries(self, session):
     self.sv.summary_computed(session,
@@ -322,7 +312,7 @@ def run(model, argv):
       '--eval_batch_size', type=int, help='Number of examples per eval batch.')
   parser.add_argument(
       '--eval_interval_secs',
-      type=float,
+      type=int,
       default=180,
       help='Minimal interval between calculating evaluation metrics and saving'
       ' evaluation summaries.')
@@ -519,7 +509,7 @@ def eval_dir(output_path):
 def model_dir(output_path):
   return os.path.join(output_path, 'model')
 
-
 if __name__ == '__main__':
-  logging.basicConfig(level=logging.INFO)
+  #logging.basicConfig(level=logging.INFO)
+  logging.getLogger().setLevel(logging.INFO)
   tf.app.run()

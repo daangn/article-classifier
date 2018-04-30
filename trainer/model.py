@@ -35,6 +35,7 @@ import util
 from util import override_if_not_in_args
 
 from rnn import stack_bidirectional_dynamic_rnn, simple_rnn, multi_rnn
+from transformer import transfomer_encoder
 
 LOGITS_TENSOR_NAME = 'logits_tensor'
 LABEL_COLUMN = 'label'
@@ -111,9 +112,6 @@ def create_model():
   override_if_not_in_args('--max_steps', '1000', task_args)
   override_if_not_in_args('--batch_size', '100', task_args)
   override_if_not_in_args('--eval_set_size', '370', task_args)
-  override_if_not_in_args('--eval_interval_secs', '2', task_args)
-  override_if_not_in_args('--log_interval_secs', '2', task_args)
-  override_if_not_in_args('--min_train_eval_rate', '2', task_args)
   return Model(args.label_count, args.dropout, args.input_dict,
           use_attention=args.attention=='use', rnn_type=args.rnn_type,
           rnn_layers_count=args.rnn_layers_count,
@@ -518,9 +516,12 @@ class Model(object):
           bunch = tf.concat([bunch, username], 1)
 
     with tf.variable_scope('title'):
+      title_embeddings = tf.reshape(title_embeddings, [-1, TITLE_WORD_SIZE, WORD_DIM])
+      #title_output = transfomer_encoder(title_embeddings, TITLE_WORD_SIZE)
+      #title_output = tf.reshape(title_output, [-1, TITLE_WORD_SIZE * WORD_DIM])
+
       initial_state = dense(bunch, [192, CHAR_WORD_DIM])
       layer_sizes = [CHAR_WORD_DIM]
-      title_embeddings = tf.reshape(title_embeddings, [-1, TITLE_WORD_SIZE, WORD_DIM])
       title_words = tf.concat([title_embeddings, title_word_chars], -1)
       title_outputs, title_last_states = stack_bidirectional_dynamic_rnn(title_words, layer_sizes,
               title_words_count, initial_state=initial_state,
@@ -528,11 +529,14 @@ class Model(object):
               base_cell=base_cell, dropout_keep_prob=dropout_keep_prob, is_training=is_training)
 
     with tf.variable_scope('content'):
+      content_embeddings = tf.reshape(content_embeddings, [-1, CONTENT_WORD_SIZE, WORD_DIM])
+      #content_output = transfomer_encoder(content_embeddings, CONTENT_WORD_SIZE)
+      #content_output = tf.reshape(content_output, [-1, CONTENT_WORD_SIZE * WORD_DIM])
+
       bunch = tf.concat([bunch, title_last_states], 1)
       initial_state = dense(bunch, [192, CHAR_WORD_DIM])
 
       layer_sizes = [CHAR_WORD_DIM * (2**i) for i in range(self.rnn_layers_count)]
-      content_embeddings = tf.reshape(content_embeddings, [-1, CONTENT_WORD_SIZE, WORD_DIM])
       content_words = tf.concat([content_embeddings, content_word_chars], -1)
       content_outputs, content_last_states = stack_bidirectional_dynamic_rnn(content_words, layer_sizes,
               content_words_count, initial_state=initial_state,
@@ -540,7 +544,7 @@ class Model(object):
               base_cell=base_cell, dropout_keep_prob=dropout_keep_prob, is_training=is_training)
 
     with tf.variable_scope('final_ops'):
-      hidden = tf.concat([bunch, content_last_states], 1)
+      hidden = tf.concat([bunch, title_last_states, content_last_states], 1)
       hidden = dense(hidden, [192])
       softmax, logits = self.add_final_training_ops(hidden, self.label_count)
 

@@ -15,12 +15,13 @@
 from setuptools import setup
 
 REQUIRED_PACKAGES = [
-  'tensorflow>=1.4.0',
+  'tensorflow>=1.6.0',
+  'tensor2tensor>=1.6.0',
 ]
 
 setup(
     name='trainer',
-    version='0.1',
+    version='0.2',
     install_requires=REQUIRED_PACKAGES,
     packages=['trainer'],
     include_package_data=True,
