@@ -20,3 +20,6 @@ RUN pip install six==1.10.0
 
 RUN pip install numpy==1.13.3
 RUN pip install click
+
+# https://tensorflow.blog/2017/05/12/tf-%EC%84%B1%EB%8A%A5-%ED%8C%81-winograd-%EC%95%8C%EA%B3%A0%EB%A6%AC%EC%A6%98-%EC%84%A4%EC%A0%95/
+ENV TF_ENABLE_WINOGRAD_NONFUSED=1
