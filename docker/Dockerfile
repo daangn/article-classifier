@@ -6,7 +6,7 @@ RUN sed -i 's/archive.ubuntu.com/ftp.daumkakao.com/g' /etc/apt/sources.list
 WORKDIR /app
 RUN python -m pip install --upgrade pip
 RUN pip install google-cloud-dataflow
-RUN pip install tensorflow==1.6.0
+RUN pip install tensorflow==1.7.0
 RUN pip install tensorflow-transform
 RUN pip install pillow protobuf
 RUN pip install tensor2tensor
