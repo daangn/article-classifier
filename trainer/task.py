@@ -237,8 +237,8 @@ class Trainer(object):
               self.now = time.time()
               is_time_to_log = (self.now - self.last_log) > log_interval
 
-              #if is_time_to_log:
-              #  self.log(session)
+              if is_time_to_log:
+                self.log(session)
 
   def log(self, session):
     """Logs training progress."""

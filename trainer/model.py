@@ -469,9 +469,7 @@ class Model(object):
 
             x = tf.concat([k1, k2, k3], 2)
             x = tf.reshape(x, [-1, filters * 3])
-            username = layers.fully_connected(x, 10,
-                    normalizer_fn=tf.contrib.layers.batch_norm,
-                    normalizer_params={'is_training': is_training})
+            username = tf.layers.batch_normalization(x, training=is_training)
         elif self.username_type == 'rnn':
             outputs, last_states = stack_bidirectional_dynamic_rnn(x, [CHAR_DIM],
                     username_length, dropout_keep_prob=dropout_keep_prob,
