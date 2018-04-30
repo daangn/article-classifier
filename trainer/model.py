@@ -555,7 +555,7 @@ class Model(object):
               base_cell=base_cell, dropout_keep_prob=dropout_keep_prob, is_training=is_training)
 
     with tf.variable_scope('final_ops'):
-      hidden = tf.concat([bunch, title_last_states, content_last_states], 1)
+      hidden = tf.concat([bunch, content_last_states], 1)
       hidden = dense(hidden, [192])
       softmax, logits = self.add_final_training_ops(hidden, self.label_count)
 
