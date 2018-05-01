@@ -111,8 +111,6 @@ def create_model():
   override_if_not_in_args('--max_steps', '1000', task_args)
   override_if_not_in_args('--batch_size', '100', task_args)
   override_if_not_in_args('--eval_set_size', '370', task_args)
-  override_if_not_in_args('--eval_interval_secs', '2', task_args)
-  override_if_not_in_args('--log_interval_secs', '2', task_args)
   override_if_not_in_args('--min_train_eval_rate', '2', task_args)
   return Model(args.label_count, args.dropout, args.input_dict,
           use_attention=args.attention=='use', rnn_type=args.rnn_type,

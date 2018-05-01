@@ -387,13 +387,13 @@ def run(model, argv):
   parser.add_argument(
       '--eval_interval_secs',
       type=float,
-      default=5,
+      default=60,
       help='Minimal interval between calculating evaluation metrics and saving'
       ' evaluation summaries.')
   parser.add_argument(
       '--log_interval_secs',
       type=float,
-      default=5,
+      default=60,
       help='Minimal interval between logging training metrics and saving '
       'training summaries.')
   parser.add_argument(
