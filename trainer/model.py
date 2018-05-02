@@ -393,7 +393,10 @@ class Model(object):
         else:
             base_cell = tf.contrib.rnn.BasicLSTMCell
     else:
-        base_cell = tf.contrib.rnn.GRUCell
+        if tf.test.gpu_device_name():
+            base_cell = tf.contrib.cudnn_rnn.CudnnCompatibleGRUCell
+        else:
+            base_cell = tf.contrib.rnn.GRUCell
 
     def dropout(x, keep_prob):
         if keep_prob:

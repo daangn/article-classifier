@@ -1,3 +1,5 @@
+import logging
+
 import tensorflow as tf
 from tensorflow.python.ops import rnn_cell
 from tensorflow.python.ops import init_ops
@@ -6,7 +8,9 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import rnn
 from tensorflow.contrib.rnn.python.ops import lstm_ops
 from tensorflow.contrib.rnn.python.ops import rnn as contrib_rnn
-from tensorflow.contrib.rnn import GRUCell, MultiRNNCell, ResidualWrapper
+from tensorflow.contrib.rnn import MultiRNNCell, ResidualWrapper
+from tensorflow.contrib.cudnn_rnn.python.layers import cudnn_rnn
+from tensorflow.contrib.cudnn_rnn.python.ops import cudnn_rnn_ops
 
 def make_rnn_cells(rnn_layer_sizes,
                   dropout_keep_prob=1.0,
@@ -74,10 +78,47 @@ def _add_conv_layers(inks, is_training=False, num_conv=[50, 50, 50], conv_len=[5
           name="conv1d_%d" % i)
     return convolved
 
+def cudnn_stack_bidirectional_dynamic_rnn(inputs, layer_sizes, sequence_length,
+        initial_state=None, dropout_keep_prob=1.0,
+        cell_wrapper=None, variational_recurrent=True,
+        base_cell=tf.contrib.rnn.BasicLSTMCell, is_training=False):
+    num_layers = len(layer_sizes)
+    num_units = layer_sizes[0]
+    num_dirs = 2
+    batch_size = tf.shape(inputs)[0]
+    dropout_prob = 0.
+    if dropout_keep_prob is not None:
+        dropout_prob = 1. - dropout_keep_prob
+
+    if initial_state is not None:
+        c = tf.zeros([num_layers * num_dirs, batch_size, num_units])
+        #h = tf.zeros([num_layers * num_dirs, batch_size, num_units])
+        initial_state = tf.expand_dims(initial_state, 0)
+        h = tf.concat([initial_state for _ in range(num_layers*num_dirs)], 0)
+        initial_state = (c, h)
+    else:
+        initial_state = None
+
+    lstm = cudnn_rnn.CudnnLSTM(num_layers=num_layers, num_units=num_units,
+            direction=cudnn_rnn_ops.CUDNN_RNN_BIDIRECTION, dropout=dropout_prob)
+
+    inputs = tf.transpose(inputs, [1, 0, 2])
+    output, output_states = lstm(inputs, initial_state=initial_state, training=is_training)
+    output = tf.transpose(output, [1, 0, 2])
+
+    last_states = tf.concat([output_states[1][-2], output_states[1][-1]], 1)
+    return output, last_states
+
 def stack_bidirectional_dynamic_rnn(inputs, layer_sizes, sequence_length,
         initial_state=None, dropout_keep_prob=1.0,
         cell_wrapper=None, variational_recurrent=True,
         base_cell=tf.contrib.rnn.BasicLSTMCell, is_training=False):
+    if base_cell == tf.contrib.cudnn_rnn.CudnnCompatibleLSTMCell:
+        return cudnn_stack_bidirectional_dynamic_rnn(inputs, layer_sizes, sequence_length,
+                initial_state=initial_state, dropout_keep_prob=dropout_keep_prob,
+                cell_wrapper=cell_wrapper, variational_recurrent=variational_recurrent,
+                base_cell=base_cell, is_training=is_training)
+
     is_lstm = base_cell in [tf.contrib.rnn.BasicLSTMCell, tf.contrib.cudnn_rnn.CudnnCompatibleLSTMCell]
 
     #inputs = _add_conv_layers(inputs, is_training=is_training, num_conv=[layer_sizes[0]], conv_len=[5], dropout=dropout_keep_prob)
