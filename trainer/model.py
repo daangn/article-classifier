@@ -35,11 +35,7 @@ from tensorflow.python.keras.layers import Embedding, Conv1D
 import util
 from util import override_if_not_in_args
 
-from rnn import stack_bidirectional_dynamic_rnn, simple_rnn, multi_rnn
-
-LOGITS_TENSOR_NAME = 'logits_tensor'
-LABEL_COLUMN = 'label'
-EMBEDDING_COLUMN = 'embedding'
+from rnn import stack_bidirectional_dynamic_rnn
 
 BLOCKS_COUNT = 72
 TOTAL_CATEGORIES_COUNT = 62
