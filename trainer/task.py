@@ -306,9 +306,9 @@ class Trainer(object):
 
   def log(self, session):
     """Logs training progress."""
-    logging.info('Train [%s/%d], step %d (%.3f sec) %.1f '
-                 'global steps/s, %.1f local steps/s', self.task.type,
-                 self.task.index, self.global_step,
+    logging.info('Train step %d (%.2f sec) %.1f '
+                 'global steps/s, %.1f local steps/s',
+                 self.global_step,
                  (self.now - self.start_time),
                  (self.global_step - self.last_global_step) /
                  (self.now - self.last_global_time),
@@ -323,15 +323,15 @@ class Trainer(object):
     """Runs evaluation loop."""
     eval_start = time.time()
     self.saver.save(session, self.sv.save_path, self.tensors.global_step)
-    logging.info(
-        'Eval, step %d:\n- on train set %s\n-- on eval set %s',
-        self.global_step,
-        self.model.format_metric_values(self.train_evaluator.evaluate()),
-        self.model.format_metric_values(self.evaluator.evaluate()))
+    train_val = self.model.format_metric_values(self.train_evaluator.evaluate())
+    eval_val = self.model.format_metric_values(self.evaluator.evaluate())
     now = time.time()
+    eval_time = now - eval_start
+    logging.info(
+        'Eval, step %d: (%.1fs)\n- on train set %s\n-- on eval set %s',
+        self.global_step, eval_time, train_val, eval_val)
 
     # Make sure eval doesn't consume too much of total time.
-    eval_time = now - eval_start
     train_eval_rate = self.eval_interval / eval_time
     if train_eval_rate < self.min_train_eval_rate and self.last_save > 0:
       logging.info('Adjusting eval interval from %.2fs to %.2fs',
@@ -386,8 +386,8 @@ def run(model, argv):
       '--eval_batch_size', type=int, help='Number of examples per eval batch.')
   parser.add_argument(
       '--eval_interval_secs',
-      type=float,
-      default=60,
+      type=int,
+      default=120,
       help='Minimal interval between calculating evaluation metrics and saving'
       ' evaluation summaries.')
   parser.add_argument(
