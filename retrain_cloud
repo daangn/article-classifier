@@ -117,8 +117,7 @@ elif [[ $CMD == 'train' ]] || [[ $CMD == 'train_test' ]]; then
     --package-path trainer \
     --staging-bucket $BUCKET \
     --region us-central1 \
-    --runtime-version=1.6 \
-    --config config.yaml \
+    --config config_gpu.yaml \
     -- \
     --label_count $LABEL_COUNT \
     --max_steps 35000 \
@@ -143,7 +142,6 @@ elif [[ $CMD == 'tuning' ]]; then
     --package-path trainer \
     --staging-bucket $BUCKET \
     --region us-central1 \
-    --runtime-version=1.6 \
     --config tuning.yaml \
     -- \
     --label_count $LABEL_COUNT \
@@ -169,7 +167,6 @@ elif [[ $CMD == 'write_predict' ]]; then
     --package-path trainer \
     --staging-bucket $BUCKET \
     --region us-central1 \
-    --runtime-version=1.6 \
     --config write_predict.yaml \
     -- \
     --write_predictions \

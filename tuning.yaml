@@ -1,4 +1,5 @@
 trainingInput:
+  runtimeVersion: '1.6'
   scaleTier: CUSTOM
   masterType: complex_model_s
   workerType: complex_model_s
