@@ -99,7 +99,6 @@ def create_model():
   parser = argparse.ArgumentParser()
   # Label count needs to correspond to nubmer of labels in dictionary used
   # during preprocessing.
-  parser.add_argument('--label_count', type=int)
   parser.add_argument('--dropout', type=float, default=0.5)
   parser.add_argument('--input_dict', type=str)
   parser.add_argument('--char_dict', type=str)
@@ -117,7 +116,7 @@ def create_model():
   override_if_not_in_args('--batch_size', str(batch_size), task_args)
   override_if_not_in_args('--eval_set_size', '370', task_args)
   override_if_not_in_args('--min_train_eval_rate', '2', task_args)
-  return Model(args.label_count, args.dropout, args.input_dict,
+  return Model(args.dropout, args.input_dict,
           use_attention=args.attention=='use', rnn_type=args.rnn_type,
           rnn_layers_count=args.rnn_layers_count,
           final_layers_count=args.final_layers_count,
@@ -182,14 +181,14 @@ def blocks_inline_to_matrix(inline):
 class Model(object):
   """TensorFlow model for the flowers problem."""
 
-  def __init__(self, label_count, dropout, labels_path, use_attention=False,
+  def __init__(self, dropout, labels_path, use_attention=False,
           rnn_type='LSTM', rnn_layers_count=2, final_layers_count=2,
           char_dict_path=None, text_char_dict_path=None,
           rnn_cell_wrapper=None, variational_dropout=None,
           username_type=None, activation=None):
-    self.label_count = label_count
     self.dropout = dropout
     self.labels = file_io.read_file_to_string(labels_path).strip().split('\n')
+    self.label_count = len(self.labels)
     self.use_attention = use_attention
     self.rnn_type = rnn_type
     self.rnn_layers_count = rnn_layers_count

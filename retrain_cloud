@@ -16,7 +16,6 @@ declare -r BUCKET="gs://${PROJECT}-ml"
 declare -r GCS_PATH="${BUCKET}/${MODEL_NAME}/jobs/${JOB_ID}"
 declare -r DATA_PATH="${BUCKET}/${MODEL_NAME}/data"
 declare -r DICT_FILE="${DATA_PATH}/article_dict.txt"
-LABEL_COUNT=`wc -l < data/article_dict.txt`
 
 echo
 echo "Using job id: " $JOB_ID
@@ -105,7 +104,6 @@ elif [[ $CMD == 'train' ]] || [[ $CMD == 'train_test' ]]; then
   fi
 
   echo "Training on local is quick after preprocessing."
-  echo "Labels count: $LABEL_COUNT"
   echo "train paths: $TRAIN_PATHS"
 
   OUTPUT_ID="$(date +%m%d_%H%M%S)"
@@ -119,7 +117,6 @@ elif [[ $CMD == 'train' ]] || [[ $CMD == 'train_test' ]]; then
     --region us-central1 \
     --config config_single.yaml \
     -- \
-    --label_count $LABEL_COUNT \
     --max_steps 35000 \
     --eval_set_size 3000 \
     --output_path "${GCS_PATH}/training_${OUTPUT_ID}" \
@@ -143,7 +140,6 @@ elif [[ $CMD == 'tuning' ]]; then
     --region us-central1 \
     --config tuning.yaml \
     -- \
-    --label_count $LABEL_COUNT \
     --max_steps 30000 \
     --eval_set_size 3000 \
     --output_path "${GCS_PATH}/training_${OUTPUT_ID}" \
@@ -168,7 +164,6 @@ elif [[ $CMD == 'write_predict' ]]; then
     --config write_predict.yaml \
     -- \
     --write_predictions \
-    --label_count $LABEL_COUNT \
     --output_path "${GCS_PATH}/training_${OUTPUT_ID}" \
     --eval_data_paths $DATA_PATHS \
     --eval_set_size $DATA_COUNT \
