@@ -43,7 +43,7 @@ TOTAL_CATEGORIES_COUNT = 62
 DAY_TIME = 60 * 60 * 24
 
 BOTTLENECK_TENSOR_SIZE = 1536
-CHAR_DIM = 16
+CHAR_DIM = 24
 WORD_DIM = 50
 CHAR_WORD_DIM = WORD_DIM + CHAR_DIM*2
 TITLE_WORD_SIZE = 12
@@ -456,21 +456,30 @@ class Model(object):
             username = tf.reshape(x, [-1, USERNAME_CHAR_SIZE * CHAR_DIM])
             username = dense(username, [30, 30])
         elif self.username_type == 'cnn':
-            filters = 5
+            filters = 10
             k3 = tf.layers.conv1d(x, filters, 3)
             k3 = tf.nn.relu(k3)
             k3 = tf.layers.max_pooling1d(k3, 3, 3)
+            k3 = tf.layers.conv1d(k3, filters, 3)
+            k3 = tf.nn.relu(k3)
+
             k2 = tf.layers.conv1d(x, filters, 2)
             k2 = tf.nn.relu(k2)
             k2 = tf.layers.max_pooling1d(k2, 2, 2)
+            k2 = tf.layers.conv1d(k2, filters, 2, strides=2)
+            k2 = tf.nn.relu(k2)
+            k2 = tf.layers.max_pooling1d(k2, 2, 2)
+
             k1 = tf.layers.conv1d(x, filters, 1)
             k1 = tf.nn.relu(k1)
             k1 = tf.layers.max_pooling1d(k1, 3, 3)
-            x = tf.concat([k1, k2, k3], 1)
-            x = tf.reshape(x, [-1, filters * 12])
-            username = layers.fully_connected(x, 30,
-                    normalizer_fn=tf.contrib.layers.batch_norm,
-                    normalizer_params={'is_training': is_training})
+            k1 = tf.layers.conv1d(k1, filters, 2, strides=2)
+            k1 = tf.nn.relu(k1)
+            k1 = tf.layers.max_pooling1d(k1, 2, 2)
+
+            x = tf.concat([k1, k2, k3], 2)
+            x = tf.reshape(x, [-1, filters * 3])
+            username = tf.layers.batch_normalization(x, training=is_training)
         elif self.username_type == 'rnn':
             outputs, last_states = stack_bidirectional_dynamic_rnn(x, [CHAR_DIM],
                     username_length, dropout_keep_prob=dropout_keep_prob,
