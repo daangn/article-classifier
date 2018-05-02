@@ -443,6 +443,7 @@ def run(model, argv):
       'memory. This results in faster evaluation cycle but can potentially '
       'use more memory (in streaming mode large per-file read-ahead buffer is '
       'used - which may exceed eval data size).')
+  parser.add_argument('-c', type=str, help='Comment')
 
   args, _ = parser.parse_known_args(argv)
 

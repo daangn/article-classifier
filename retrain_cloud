@@ -126,7 +126,7 @@ elif [[ $CMD == 'train' ]] || [[ $CMD == 'train_test' ]]; then
     --char_dict "${DATA_PATH}/char_dict.txt" \
     --text_char_dict "${DATA_PATH}/text_char_dict.txt" \
     --dropout 0.5 \
-    $HPARAMS
+    $HPARAMS $@
 
 elif [[ $CMD == 'tuning' ]]; then
   TRAIN_PATHS="${GCS_PATH}/preproc/train*"
