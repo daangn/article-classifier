@@ -18,6 +18,7 @@
 import argparse
 import logging
 
+import numpy as np
 import tensorflow as tf
 from tensorflow.contrib import layers
 
@@ -557,7 +558,7 @@ class Model(object):
 
     # Prediction is the index of the label with the highest score. We are
     # interested only in the top score.
-    prediction = tf.argmax(softmax, 1)
+    prediction = tf.argmax(logits, 1)
     tensors.predictions = [prediction, softmax]
 
     if graph_mod == GraphMod.PREDICT:
@@ -584,6 +585,9 @@ class Model(object):
     loss_updates, loss_op = util.loss(loss_value)
     accuracy_updates, accuracy_op = util.accuracy(logits, labels)
 
+    all_precision_op, all_precision_update = tf.metrics.precision(labels, prediction)
+    all_recall_op, all_recall_update = tf.metrics.recall(labels, prediction)
+
     precision = {'ops': [], 'updates': []}
     recall = {'ops': [], 'updates': []}
 
@@ -592,21 +596,24 @@ class Model(object):
             op, update = tf.metrics.recall_at_k(labels, logits, 1, class_id=i)
             recall['ops'].append(op)
             recall['updates'].append(update)
-            op, update = tf.metrics.sparse_precision_at_k(labels, logits, 1, class_id=i)
+            op, update = tf.metrics.precision_at_k(labels, logits, 1, class_id=i)
             precision['ops'].append(op)
             precision['updates'].append(update)
 
     if not is_training:
-      tf.summary.scalar('accuracy', accuracy_op)
-      tf.summary.scalar('loss', loss_op)
+      tf.summary.scalar('accuracy', accuracy_op, family='general')
+      tf.summary.scalar('loss', loss_op, family='general')
+      tf.summary.scalar('precision', all_precision_op, family='general')
+      tf.summary.scalar('recall', all_recall_op, family='general')
       for i in range(self.label_count):
           label_name = self.labels[i]
-          tf.summary.scalar('recall_%s' % label_name, recall['ops'][i])
-          tf.summary.scalar('precision_%s' % label_name, precision['ops'][i])
+          tf.summary.scalar('%s' % label_name, recall['ops'][i], family='recall')
+          tf.summary.scalar('%s' % label_name, precision['ops'][i], family='precision')
 
     tensors.metric_updates = loss_updates + accuracy_updates + \
+            [all_precision_update, all_recall_update] + \
             recall['updates'] + precision['updates']
-    tensors.metric_values = [loss_op, accuracy_op, recall['ops'], precision['ops']]
+    tensors.metric_values = [loss_op, accuracy_op, all_precision_op, all_recall_op]
     return tensors
 
   def build_train_graph(self, data_paths, batch_size):
@@ -706,13 +713,17 @@ class Model(object):
     # Early in training, metric_values may actually be None.
     loss_str = 'N/A'
     accuracy_str = 'N/A'
+    precision_str = 'N/A'
+    recall_str = 'N/A'
     try:
       loss_str = '%.3f' % metric_values[0]
       accuracy_str = '%.3f' % metric_values[1]
+      precision_str = '%.2f' % metric_values[2]
+      recall_str = '%.2f' % metric_values[3]
     except (TypeError, IndexError):
       pass
 
-    return '%s, %s' % (loss_str, accuracy_str)
+    return '%s, %s, (%s, %s)' % (loss_str, accuracy_str, precision_str, recall_str)
 
 
 def loss(logits, labels):
