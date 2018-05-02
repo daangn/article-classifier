@@ -91,6 +91,11 @@ def build_signature(inputs, outputs):
 
 def create_model():
   """Factory method that creates model to be used by generic task.py."""
+  if tf.test.gpu_device_name():
+      batch_size = 1024
+  else:
+      batch_size = 100
+
   parser = argparse.ArgumentParser()
   # Label count needs to correspond to nubmer of labels in dictionary used
   # during preprocessing.
@@ -109,7 +114,7 @@ def create_model():
   parser.add_argument('--final_layers_count', type=int, default=1)
   args, task_args = parser.parse_known_args()
   override_if_not_in_args('--max_steps', '1000', task_args)
-  override_if_not_in_args('--batch_size', '100', task_args)
+  override_if_not_in_args('--batch_size', str(batch_size), task_args)
   override_if_not_in_args('--eval_set_size', '370', task_args)
   override_if_not_in_args('--min_train_eval_rate', '2', task_args)
   return Model(args.label_count, args.dropout, args.input_dict,
@@ -382,7 +387,13 @@ class Model(object):
         content_word_char_lengths = parsed['content_word_char_lengths']
 
     dropout_keep_prob = self.dropout if is_training else None
-    base_cell = tf.contrib.rnn.BasicLSTMCell if self.rnn_type == 'LSTM' else tf.contrib.rnn.GRUCell
+    if self.rnn_type == 'LSTM':
+        if tf.test.gpu_device_name():
+            base_cell = tf.contrib.cudnn_rnn.CudnnCompatibleLSTMCell
+        else:
+            base_cell = tf.contrib.rnn.BasicLSTMCell
+    else:
+        base_cell = tf.contrib.rnn.GRUCell
 
     def dropout(x, keep_prob):
         if keep_prob:
