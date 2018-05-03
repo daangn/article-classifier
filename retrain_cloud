@@ -22,11 +22,11 @@ echo "Using job id: " $JOB_ID
 
 HPARAMS="--attention no_use
     --activation relu
-    --username_type rnn
+    --username_type cnn
     --variational_dropout no_use
     --rnn_cell_wrapper residual
     --rnn_type LSTM
-    --rnn_layers_count 2
+    --rnn_layers_count 3
     --final_layers_count 1"
 
 if [[ $CMD == 'gen' ]]; then
@@ -117,15 +117,14 @@ elif [[ $CMD == 'train' ]] || [[ $CMD == 'train_test' ]]; then
     --region us-central1 \
     --config config_single.yaml \
     -- \
-    --max_steps 35000 \
-    --eval_set_size 3000 \
+    --max_steps 2500 \
+    --eval_set_size 2000 \
     --output_path "${GCS_PATH}/training_${OUTPUT_ID}" \
     --eval_data_paths "${GCS_PATH}/preproc/eval*" \
     --train_data_paths "${TRAIN_PATHS}" \
     --input_dict "$DICT_FILE" \
     --char_dict "${DATA_PATH}/char_dict.txt" \
     --text_char_dict "${DATA_PATH}/text_char_dict.txt" \
-    --dropout 0.5 \
     $HPARAMS $@
 
 elif [[ $CMD == 'tuning' ]]; then
@@ -138,10 +137,10 @@ elif [[ $CMD == 'tuning' ]]; then
     --package-path trainer \
     --staging-bucket $BUCKET \
     --region us-central1 \
-    --config tuning.yaml \
+    --config tuning_single.yaml \
     -- \
-    --max_steps 30000 \
-    --eval_set_size 3000 \
+    --max_steps 2500 \
+    --eval_set_size 2000 \
     --output_path "${GCS_PATH}/training_${OUTPUT_ID}" \
     --eval_data_paths "${GCS_PATH}/preproc/eval*" \
     --train_data_paths "${TRAIN_PATHS}" \

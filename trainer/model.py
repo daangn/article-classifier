@@ -30,7 +30,7 @@ from tensorflow.python.saved_model import utils as saved_model_utils
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.keras.layers import Embedding, Conv1D
+from tensorflow.python.keras.layers import Embedding, Conv1D, GlobalMaxPooling1D
 
 import util
 from util import override_if_not_in_args
@@ -102,9 +102,10 @@ def create_model():
   parser.add_argument('--text_char_dict', type=str)
   parser.add_argument('--attention', type=str, default='no_use')
   parser.add_argument('--username_type', type=str, default='rnn')
+  parser.add_argument('--word_char_type', type=str, default='rnn')
   parser.add_argument('--activation', type=str, default='relu')
   parser.add_argument('--rnn_cell_wrapper', type=str, default='residual')
-  parser.add_argument('--variational_dropout', type=str, default='use')
+  parser.add_argument('--variational_dropout', type=str, default='no_use')
   parser.add_argument('--rnn_type', type=str, default='LSTM')
   parser.add_argument('--rnn_layers_count', type=int, default=2)
   parser.add_argument('--final_layers_count', type=int, default=1)
@@ -113,7 +114,7 @@ def create_model():
   override_if_not_in_args('--batch_size', str(batch_size), task_args)
   override_if_not_in_args('--eval_set_size', '370', task_args)
   override_if_not_in_args('--min_train_eval_rate', '2', task_args)
-  return Model(args.dropout, args.input_dict,
+  return Model(args, args.dropout, args.input_dict,
           use_attention=args.attention=='use', rnn_type=args.rnn_type,
           rnn_layers_count=args.rnn_layers_count,
           final_layers_count=args.final_layers_count,
@@ -178,11 +179,12 @@ def blocks_inline_to_matrix(inline):
 class Model(object):
   """TensorFlow model for the flowers problem."""
 
-  def __init__(self, dropout, labels_path, use_attention=False,
+  def __init__(self, args, dropout, labels_path, use_attention=False,
           rnn_type='LSTM', rnn_layers_count=2, final_layers_count=2,
           char_dict_path=None, text_char_dict_path=None,
           rnn_cell_wrapper=None, variational_dropout=None,
           username_type=None, activation=None):
+    self.args = args
     self.dropout = dropout
     self.labels = file_io.read_file_to_string(labels_path).strip().split('\n')
     self.label_count = len(self.labels)
@@ -399,20 +401,37 @@ class Model(object):
             return tf.nn.dropout(x, keep_prob)
         return x
 
+    #regularizer = tf.contrib.layers.l2_regularizer(0.0001)
+    regularizer = None
+
     def dense(x, units):
         for unit in units:
             if self.activation == 'maxout':
-                x = layers.fully_connected(x, unit, activation_fn=None)
+                x = layers.fully_connected(x, unit, activation_fn=None,
+                        weights_regularizer=regularizer)
                 x = tf.contrib.layers.maxout(x, unit)
                 x = tf.reshape(x, [-1, unit])
             elif self.activation == 'none':
                 x = layers.fully_connected(x, unit,
+                        weights_regularizer=regularizer,
                         normalizer_fn=tf.contrib.layers.batch_norm,
                         normalizer_params={'is_training': is_training})
             else:
-                x = layers.fully_connected(x, unit)
+                x = layers.fully_connected(x, unit, weights_regularizer=regularizer)
             x = dropout(x, dropout_keep_prob)
         return x
+
+    def shallow_and_wide_cnn(inputs, filters, kernel_sizes):
+        outputs = []
+        for kernel_size in kernel_sizes:
+            conv = tf.layers.conv1d(inputs, filters, kernel_size, padding="same",
+                    kernel_regularizer=regularizer)
+            conv = tf.layers.batch_normalization(conv, training=is_training)
+            conv = tf.nn.relu(conv)
+            conv = GlobalMaxPooling1D()(conv)
+            outputs.append(conv)
+        output = tf.concat(outputs, 1)
+        return dropout(output, dropout_keep_prob)
 
     def get_word_chars(table, char_embedding, word_chars, char_lengths, word_size):
         word_chars = tf.reshape(word_chars, [-1, word_size, WORD_CHAR_SIZE])
@@ -422,13 +441,18 @@ class Model(object):
         mask = tf.expand_dims(mask, 3)  # [batch, seq_len, char_dim, 1]
         x = x * mask
         x = tf.reshape(x, [-1, WORD_CHAR_SIZE, CHAR_DIM])
-        length = tf.reshape(char_lengths, [-1])
-        outputs, last_states = stack_bidirectional_dynamic_rnn(x, [CHAR_DIM],
-                length, dropout_keep_prob=dropout_keep_prob,
-                cell_wrapper=self.rnn_cell_wrapper,
-                variational_recurrent=self.variational_recurrent,
-                base_cell=base_cell,
-                is_training=is_training)
+        if self.args.word_char_type == 'cnn':
+            filters = 16
+            output = shallow_and_wide_cnn(x, filters, [1,2,3])
+            last_states = output
+        else:
+            length = tf.reshape(char_lengths, [-1])
+            outputs, last_states = stack_bidirectional_dynamic_rnn(x, [CHAR_DIM],
+                    length, dropout_keep_prob=dropout_keep_prob,
+                    cell_wrapper=self.rnn_cell_wrapper,
+                    variational_recurrent=self.variational_recurrent,
+                    base_cell=base_cell,
+                    is_training=is_training)
         return tf.reshape(last_states, [-1, word_size, CHAR_DIM*2])
 
     with tf.variable_scope("word_chars", reuse=tf.AUTO_REUSE):
@@ -456,30 +480,34 @@ class Model(object):
             username = tf.reshape(x, [-1, USERNAME_CHAR_SIZE * CHAR_DIM])
             username = dense(username, [30, 30])
         elif self.username_type == 'cnn':
+            def conv_username(x, filters):
+                k3 = tf.layers.conv1d(x, filters, 3)
+                k3 = tf.nn.relu(k3)
+                k3 = tf.layers.max_pooling1d(k3, 3, 3)
+                k3 = tf.layers.conv1d(k3, filters, 3)
+                k3 = tf.nn.relu(k3)
+
+                k2 = tf.layers.conv1d(x, filters, 2)
+                k2 = tf.nn.relu(k2)
+                k2 = tf.layers.max_pooling1d(k2, 2, 2)
+                k2 = tf.layers.conv1d(k2, filters, 2, strides=2)
+                k2 = tf.nn.relu(k2)
+                k2 = tf.layers.max_pooling1d(k2, 2, 2)
+
+                k1 = tf.layers.conv1d(x, filters, 1)
+                k1 = tf.nn.relu(k1)
+                k1 = tf.layers.max_pooling1d(k1, 3, 3)
+                k1 = tf.layers.conv1d(k1, filters, 2, strides=2)
+                k1 = tf.nn.relu(k1)
+                k1 = tf.layers.max_pooling1d(k1, 2, 2)
+
+                x = tf.concat([k1, k2, k3], 2)
+                x = tf.reshape(x, [-1, filters * 3])
+                return tf.layers.batch_normalization(x, training=is_training)
+
             filters = 10
-            k3 = tf.layers.conv1d(x, filters, 3)
-            k3 = tf.nn.relu(k3)
-            k3 = tf.layers.max_pooling1d(k3, 3, 3)
-            k3 = tf.layers.conv1d(k3, filters, 3)
-            k3 = tf.nn.relu(k3)
-
-            k2 = tf.layers.conv1d(x, filters, 2)
-            k2 = tf.nn.relu(k2)
-            k2 = tf.layers.max_pooling1d(k2, 2, 2)
-            k2 = tf.layers.conv1d(k2, filters, 2, strides=2)
-            k2 = tf.nn.relu(k2)
-            k2 = tf.layers.max_pooling1d(k2, 2, 2)
-
-            k1 = tf.layers.conv1d(x, filters, 1)
-            k1 = tf.nn.relu(k1)
-            k1 = tf.layers.max_pooling1d(k1, 3, 3)
-            k1 = tf.layers.conv1d(k1, filters, 2, strides=2)
-            k1 = tf.nn.relu(k1)
-            k1 = tf.layers.max_pooling1d(k1, 2, 2)
-
-            x = tf.concat([k1, k2, k3], 2)
-            x = tf.reshape(x, [-1, filters * 3])
-            username = tf.layers.batch_normalization(x, training=is_training)
+            #username = shallow_and_wide_cnn(x, filters, [1,2,3])
+            username = conv_username(x, filters)
         elif self.username_type == 'rnn':
             outputs, last_states = stack_bidirectional_dynamic_rnn(x, [CHAR_DIM],
                     username_length, dropout_keep_prob=dropout_keep_prob,
@@ -536,7 +564,7 @@ class Model(object):
 
     with tf.variable_scope('title'):
       initial_state = dense(bunch, [192, CHAR_WORD_DIM])
-      layer_sizes = [CHAR_WORD_DIM]
+      layer_sizes = [CHAR_WORD_DIM * (2**i) for i in range(max(1, self.rnn_layers_count-2))]
       title_embeddings = tf.reshape(title_embeddings, [-1, TITLE_WORD_SIZE, WORD_DIM])
       title_words = tf.concat([title_embeddings, title_word_chars], -1)
       title_outputs, title_last_states = stack_bidirectional_dynamic_rnn(title_words, layer_sizes,
@@ -558,7 +586,8 @@ class Model(object):
 
     with tf.variable_scope('final_ops'):
       hidden = tf.concat([bunch, content_last_states], 1)
-      hidden = dense(hidden, [192])
+      if self.final_layers_count > 0:
+          hidden = dense(hidden, [192] + [64] * (self.final_layers_count-1))
       softmax, logits = self.add_final_training_ops(hidden, self.label_count)
 
     # Prediction is the index of the label with the highest score. We are

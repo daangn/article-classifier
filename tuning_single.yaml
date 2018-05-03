@@ -1,0 +1,34 @@
+trainingInput:
+  runtimeVersion: '1.6'
+  scaleTier: CUSTOM
+  masterType: standard_p100
+  hyperparameters:
+    goal: MAXIMIZE
+    hyperparameterMetricTag: accuracy
+    maxTrials: 30
+    maxParallelTrials: 5
+    enableTrialEarlyStopping: True
+    params:
+    - parameterName: username_type
+      type: CATEGORICAL
+      categoricalValues:
+      - rnn
+      - cnn
+      - none
+    - parameterName: word_char_type
+      type: CATEGORICAL
+      categoricalValues:
+      - rnn
+      - cnn
+    - parameterName: rnn_layers_count
+      type: DISCRETE
+      discreteValues:
+      - 1
+      - 2
+      - 3
+    - parameterName: final_layers_count
+      type: DISCRETE
+      discreteValues:
+      - 1
+      - 2
+      - 3
