@@ -440,7 +440,7 @@ class Model(object):
         mask = tf.sequence_mask(char_lengths, WORD_CHAR_SIZE, dtype=tf.float32)
         mask = tf.expand_dims(mask, 3)  # [batch, seq_len, char_dim, 1]
         x = x * mask
-        x = tf.reshape(x, [-1, WORD_CHAR_SIZE, CHAR_DIM])
+        x = tf.reshape(x, [-1, WORD_CHAR_SIZE, CHAR_DIM])   # [batch * word_size, word_char_size, char_dim]
         if self.args.word_char_type == 'cnn':
             filters = 16
             output = shallow_and_wide_cnn(x, filters, [1,2,3])
@@ -453,7 +453,7 @@ class Model(object):
                     variational_recurrent=self.variational_recurrent,
                     base_cell=base_cell,
                     is_training=is_training)
-        return tf.reshape(last_states, [-1, word_size, CHAR_DIM*2])
+        return tf.reshape(last_states, [-1, word_size, CHAR_DIM*2]) # [batch, word_size, char_dim*2]
 
     with tf.variable_scope("word_chars", reuse=tf.AUTO_REUSE):
         table = tf.contrib.lookup.index_table_from_tensor(
