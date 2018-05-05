@@ -521,6 +521,7 @@ class Model(object):
         else:
             raise Exception('Invaild username_type: %s' % self.username_type)
 
+
     with tf.variable_scope("user"):
         recent_articles_count = tf.minimum(recent_articles_count, 300)
         recent_articles_count = tf.expand_dims(recent_articles_count, 1)
@@ -563,8 +564,8 @@ class Model(object):
           bunch = tf.concat([bunch, username], 1)
 
     with tf.variable_scope('title'):
-      initial_state = dense(bunch, [192, CHAR_WORD_DIM])
-      layer_sizes = [CHAR_WORD_DIM * (2**i) for i in range(max(1, self.rnn_layers_count-2))]
+      initial_state = dense(bunch, [CHAR_WORD_DIM*2])
+      layer_sizes = [CHAR_WORD_DIM * (2**i) for i in range(max(1, self.rnn_layers_count-1))]
       title_embeddings = tf.reshape(title_embeddings, [-1, TITLE_WORD_SIZE, WORD_DIM])
       title_words = tf.concat([title_embeddings, title_word_chars], -1)
       title_outputs, title_last_states = stack_bidirectional_dynamic_rnn(title_words, layer_sizes,
@@ -574,7 +575,7 @@ class Model(object):
 
     with tf.variable_scope('content'):
       bunch = tf.concat([bunch, title_last_states], 1)
-      initial_state = dense(bunch, [192, CHAR_WORD_DIM])
+      initial_state = dense(bunch, [192, CHAR_WORD_DIM*2])
 
       layer_sizes = [CHAR_WORD_DIM * (2**i) for i in range(self.rnn_layers_count)]
       content_embeddings = tf.reshape(content_embeddings, [-1, CONTENT_WORD_SIZE, WORD_DIM])
