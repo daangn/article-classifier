@@ -109,6 +109,7 @@ def create_model():
   parser.add_argument('--rnn_type', type=str, default='LSTM')
   parser.add_argument('--rnn_layers_count', type=int, default=2)
   parser.add_argument('--final_layers_count', type=int, default=1)
+  parser.add_argument('--l2_reg_scale', type=float, default=0.)
   args, task_args = parser.parse_known_args()
   override_if_not_in_args('--max_steps', '1000', task_args)
   override_if_not_in_args('--batch_size', str(batch_size), task_args)
@@ -401,8 +402,10 @@ class Model(object):
             return tf.nn.dropout(x, keep_prob)
         return x
 
-    #regularizer = tf.contrib.layers.l2_regularizer(0.0001)
-    regularizer = None
+    if self.args.l2_reg_scale > 0.:
+        regularizer = tf.contrib.layers.l2_regularizer(self.args.l2_reg_scale)
+    else:
+        regularizer = None
 
     def dense(x, units):
         for unit in units:

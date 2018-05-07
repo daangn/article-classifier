@@ -63,7 +63,8 @@ elif [[ $CMD == 'train' ]] || [[ $CMD == 'train_test' ]]; then
 
   rm -rf "${GCS_PATH}/training"
 
-  TF_CPP_MIN_LOG_LEVEL=0 gcloud ml-engine local train \
+    #--distributed --parameter-server-count=1 --worker-count=2 \
+  gcloud ml-engine local train \
     --module-name trainer.task \
     --package-path trainer \
     -- \

@@ -4,7 +4,7 @@ trainingInput:
   masterType: standard_p100
   hyperparameters:
     goal: MAXIMIZE
-    hyperparameterMetricTag: accuracy
+    hyperparameterMetricTag: general/general/accuracy
     maxTrials: 30
     maxParallelTrials: 5
     enableTrialEarlyStopping: True

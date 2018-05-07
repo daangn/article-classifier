@@ -117,8 +117,10 @@ elif [[ $CMD == 'train' ]] || [[ $CMD == 'train_test' ]]; then
     --region us-central1 \
     --config config_single.yaml \
     -- \
-    --max_steps 2500 \
-    --eval_set_size 2000 \
+    --batch_size 100 \
+    --max_steps 10000 \
+    --eval_set_size 3000 \
+    --eval_batch_size 3000 \
     --output_path "${GCS_PATH}/training_${OUTPUT_ID}" \
     --eval_data_paths "${GCS_PATH}/preproc/eval*" \
     --train_data_paths "${TRAIN_PATHS}" \
@@ -139,8 +141,10 @@ elif [[ $CMD == 'tuning' ]]; then
     --region us-central1 \
     --config tuning_single.yaml \
     -- \
-    --max_steps 2500 \
-    --eval_set_size 2000 \
+    --batch_size 100 \
+    --max_steps 10000 \
+    --eval_set_size 3000 \
+    --eval_batch_size 3000 \
     --output_path "${GCS_PATH}/training_${OUTPUT_ID}" \
     --eval_data_paths "${GCS_PATH}/preproc/eval*" \
     --train_data_paths "${TRAIN_PATHS}" \
