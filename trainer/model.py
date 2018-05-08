@@ -458,16 +458,17 @@ class Model(object):
                     is_training=is_training)
         return tf.reshape(last_states, [-1, word_size, CHAR_DIM*2]) # [batch, word_size, char_dim*2]
 
-    with tf.variable_scope("word_chars", reuse=tf.AUTO_REUSE):
-        table = tf.contrib.lookup.index_table_from_tensor(
-                mapping=tf.constant(self.text_chars),
-                default_value=len(self.text_chars))
-        char_dict_size = len(self.text_chars) + 1 # add unknown char
-        char_embedding = Embedding(char_dict_size, CHAR_DIM)
-        title_word_chars = get_word_chars(table, char_embedding,
-                title_word_chars, title_word_char_lengths, TITLE_WORD_SIZE)
-        content_word_chars = get_word_chars(table, char_embedding,
-                content_word_chars, content_word_char_lengths, CONTENT_WORD_SIZE)
+    if self.args.word_char_type != 'none':
+        with tf.variable_scope("word_chars", reuse=tf.AUTO_REUSE):
+            table = tf.contrib.lookup.index_table_from_tensor(
+                    mapping=tf.constant(self.text_chars),
+                    default_value=len(self.text_chars))
+            char_dict_size = len(self.text_chars) + 1 # add unknown char
+            char_embedding = Embedding(char_dict_size, CHAR_DIM)
+            title_word_chars = get_word_chars(table, char_embedding,
+                    title_word_chars, title_word_char_lengths, TITLE_WORD_SIZE)
+            content_word_chars = get_word_chars(table, char_embedding,
+                    content_word_chars, content_word_char_lengths, CONTENT_WORD_SIZE)
 
     with tf.variable_scope("username"):
         table = tf.contrib.lookup.index_table_from_tensor(
@@ -566,24 +567,31 @@ class Model(object):
       if self.username_type != 'none':
           bunch = tf.concat([bunch, username], 1)
 
+    if self.args.word_char_type != 'none':
+        word_dim = CHAR_WORD_DIM
+    else:
+        word_dim = WORD_DIM
+
     with tf.variable_scope('title'):
-      initial_state = dense(bunch, [CHAR_WORD_DIM*2])
-      layer_sizes = [CHAR_WORD_DIM * (2**i) for i in range(max(1, self.rnn_layers_count-1))]
+      initial_state = dense(bunch, [word_dim*2])
+      layer_sizes = [word_dim * (2**i) for i in range(max(1, self.rnn_layers_count-1))]
       title_embeddings = tf.reshape(title_embeddings, [-1, TITLE_WORD_SIZE, WORD_DIM])
-      title_words = tf.concat([title_embeddings, title_word_chars], -1)
-      title_outputs, title_last_states = stack_bidirectional_dynamic_rnn(title_words, layer_sizes,
+      if self.args.word_char_type != 'none':
+          title_embeddings = tf.concat([title_embeddings, title_word_chars], -1)
+      title_outputs, title_last_states = stack_bidirectional_dynamic_rnn(title_embeddings, layer_sizes,
               title_words_count, initial_state=initial_state,
               cell_wrapper=self.rnn_cell_wrapper, variational_recurrent=self.variational_recurrent,
               base_cell=base_cell, dropout_keep_prob=dropout_keep_prob, is_training=is_training)
 
     with tf.variable_scope('content'):
       bunch = tf.concat([bunch, title_last_states], 1)
-      initial_state = dense(bunch, [192, CHAR_WORD_DIM*2])
+      initial_state = dense(bunch, [192, word_dim*2])
 
-      layer_sizes = [CHAR_WORD_DIM * (2**i) for i in range(self.rnn_layers_count)]
+      layer_sizes = [word_dim * (2**i) for i in range(self.rnn_layers_count)]
       content_embeddings = tf.reshape(content_embeddings, [-1, CONTENT_WORD_SIZE, WORD_DIM])
-      content_words = tf.concat([content_embeddings, content_word_chars], -1)
-      content_outputs, content_last_states = stack_bidirectional_dynamic_rnn(content_words, layer_sizes,
+      if self.args.word_char_type != 'none':
+          content_embeddings = tf.concat([content_embeddings, content_word_chars], -1)
+      content_outputs, content_last_states = stack_bidirectional_dynamic_rnn(content_embeddings, layer_sizes,
               content_words_count, initial_state=initial_state,
               cell_wrapper=self.rnn_cell_wrapper, variational_recurrent=self.variational_recurrent,
               base_cell=base_cell, dropout_keep_prob=dropout_keep_prob, is_training=is_training)

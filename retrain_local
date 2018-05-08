@@ -20,6 +20,15 @@ declare -r DICT_FILE="${DATA_PATH}/article_dict.txt"
 echo
 echo "Using job id: " $JOB_ID
 
+HPARAMS="--attention no_use
+    --activation relu
+    --username_type cnn
+    --variational_dropout no_use
+    --rnn_cell_wrapper residual
+    --rnn_type LSTM
+    --rnn_layers_count 3
+    --final_layers_count 1"
+
 if [[ $CMD == 'gen' ]]; then
   echo "Fetch image embedding files"
   python fetch_image_embeddings.py
@@ -69,22 +78,14 @@ elif [[ $CMD == 'train' ]] || [[ $CMD == 'train_test' ]]; then
     --package-path trainer \
     -- \
     --max_steps 2 \
-    --eval_set_size 1000 \
+    --eval_set_size 10 \
     --output_path "${GCS_PATH}/training" \
     --eval_data_paths "${GCS_PATH}/preproc/eval*" \
     --train_data_paths "${TRAIN_PATHS}" \
     --input_dict "$DICT_FILE" \
     --char_dict "${DATA_PATH}/char_dict.txt" \
     --text_char_dict "${DATA_PATH}/text_char_dict.txt" \
-    --attention 'no_use' \
-    --username_type 'rnn' \
-    --activation 'relu' \
-    --variational_dropout 'no_use' \
-    --rnn_cell_wrapper 'residual' \
-    --rnn_type 'LSTM' \
-    --rnn_layers_count 2 \
-    --final_layers_count 1 \
-    --dropout 0.5
+    $HPARAMS $@
 
 elif [[ $CMD == 'write_predict' ]]; then
   DATA_PATHS="${GCS_PATH}/preproc/train*,${GCS_PATH}/preproc/eval*"
