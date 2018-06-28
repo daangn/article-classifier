@@ -39,11 +39,11 @@ if [[ $CMD == 'gen' ]]; then
   python gen_char_dict.py
 
   echo "Uploading ${DATA_PATH}"
-  gsutil -m rm "${DATA_PATH}/eval_set*.csv"
-  gsutil -m rm "${DATA_PATH}/train_set*.csv"
-  gsutil -m rm "${DATA_PATH}/article_dict.txt"
-  gsutil -m rm "${DATA_PATH}/char_dict.txt"
-  gsutil -m rm "${DATA_PATH}/text_char_dict.txt"
+  gsutil -m rm "${DATA_PATH}/eval_set*.csv" 2> /dev/null || true
+  gsutil -m rm "${DATA_PATH}/train_set*.csv" 2> /dev/null || true
+  gsutil -m rm "${DATA_PATH}/article_dict.txt" 2> /dev/null || true
+  gsutil -m rm "${DATA_PATH}/char_dict.txt" 2> /dev/null || true
+  gsutil -m rm "${DATA_PATH}/text_char_dict.txt" 2> /dev/null || true
   gsutil -m cp data/eval_set*.csv $DATA_PATH
   gsutil -m cp data/train_set*.csv $DATA_PATH
   gsutil -m cp data/article_dict.txt $DATA_PATH
